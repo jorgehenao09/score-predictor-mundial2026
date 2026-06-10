@@ -185,12 +185,16 @@ def fetch_odds(con, known_teams, force=False):
     Devuelve (n_partidos_con_cuotas, aviso)."""
     key = os.getenv("ODDS_API_KEY")
     if not key:
-        return 0, "ODDS_API_KEY no configurada en .env — capa de mercado inactiva"
+        n = _fetch_odds_bsd(con, known_teams)
+        return n, ("respaldo BSD usado (ODDS_API_KEY no configurada)"
+                   if n else "sin ODDS_API_KEY ni respaldo BSD — mercado inactivo")
     if not force and _cache_fresh("odds_last.json", TTL["odds"]):
         return -1, None  # snapshot reciente ya persistido; no gastar crédito
     used = store.requests_this_month(con, "odds_api")
     if used >= 495:
-        return 0, f"odds_api al límite mensual ({used}/500): no pido más"
+        n = _fetch_odds_bsd(con, known_teams)
+        return n, (f"odds_api al límite ({used}/500); "
+                   f"{'respaldo BSD usado' if n else 'sin respaldo disponible'}")
     # h2h + totals en una llamada = 2 créditos (mercados × regiones).
     # El mercado de totales (over/under) alimenta la matriz de goles
     # implícita del mercado, no solo el 1X2.
@@ -199,7 +203,9 @@ def fetch_odds(con, known_teams, force=False):
     try:
         text = _get(url)
     except requests.HTTPError as e:
-        return 0, f"The Odds API error: {e}"
+        n = _fetch_odds_bsd(con, known_teams)
+        return n, (f"The Odds API error: {e}; "
+                   f"{'respaldo BSD usado' if n else 'sin respaldo disponible'}")
     store.log_request(con, "odds_api", n=2)
     _write_cache("odds_last.json", text)
     games = json.loads(text)
@@ -257,6 +263,82 @@ def fetch_odds(con, known_teams, force=False):
         store.save_odds_totals(con, "odds_api", totals)
     n_matches = len({(e['home'], e['away']) for e in entries})
     return n_matches, warn_if_near_cap(con, "odds_api")
+
+
+BSD_WC_LEAGUE = 27  # league_id del Mundial 2026 en el BSD
+
+
+def _fetch_odds_bsd(con, known_teams):
+    """Respaldo de cuotas vía BSD API (experimental): eventos WC de las
+    próximas 48 h → /odds/comparison/ → 1x2 + over/under 2.5 por casa real
+    (excluye el pseudo-bookmaker 'consensus'). Guarda con source='bsd' en las
+    mismas tablas; todo el pipeline (Shin, mezcla, histórico) funciona igual.
+    Devuelve nº de partidos con cuotas, 0 si no hay token o falla."""
+    token = os.getenv("BSD_TOKEN")
+    if not token:
+        return 0
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    hdr = {"Authorization": f"Token {token}"}
+    try:
+        evs = json.loads(_get(
+            f"{BSD_HOST}/api/v2/events/?league_id={BSD_WC_LEAGUE}"
+            f"&date_from={now.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+            f"&date_to={(now + timedelta(hours=48)).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+            f"&limit=60", headers=hdr)).get("results", [])
+        store.log_request(con, "bsd")
+    except Exception:
+        return 0
+    entries, totals = [], []
+    for e in evs:
+        h = canonical(e.get("home_team", ""), known_teams)
+        a = canonical(e.get("away_team", ""), known_teams)
+        if not h or not a:
+            continue
+        try:
+            comp = json.loads(_get(
+                f"{BSD_HOST}/api/v2/events/{e['id']}/odds/comparison/",
+                headers=hdr))
+            store.log_request(con, "bsd")
+        except Exception:
+            continue
+        mks = comp.get("markets", {})
+        x12 = mks.get("1x2", {})
+        per_book = {}
+        for outcome, key_ in (("HOME", "home"), ("DRAW", "draw"),
+                              ("AWAY", "away")):
+            for bk, v in (x12.get(outcome, {}).get("bookmakers") or {}).items():
+                if bk == "consensus" or not v.get("decimal_odds"):
+                    continue
+                per_book.setdefault(bk, {})[key_] = v["decimal_odds"]
+        ct = e.get("event_date", "")
+        for bk, pr in per_book.items():
+            if len(pr) == 3:
+                entries.append({"home": h, "away": a, "commence_time": ct,
+                                "bookmaker": f"bsd:{bk}",
+                                "home_odds": pr["home"],
+                                "draw_odds": pr["draw"],
+                                "away_odds": pr["away"]})
+        ou = mks.get("over_under_25", {})
+        per_book_t = {}
+        for okey, v in ou.items():
+            side = "over" if "over" in okey.lower() else "under"
+            for bk, b in (v.get("bookmakers") or {}).items():
+                if bk == "consensus" or not b.get("decimal_odds"):
+                    continue
+                per_book_t.setdefault(bk, {})[side] = b["decimal_odds"]
+        for bk, pr in per_book_t.items():
+            if len(pr) == 2:
+                totals.append({"home": h, "away": a, "commence_time": ct,
+                               "bookmaker": f"bsd:{bk}", "point": 2.5,
+                               "over_odds": pr["over"],
+                               "under_odds": pr["under"]})
+    if entries:
+        store.save_odds_snapshot(con, "bsd", entries)
+        store.set_meta(con, "last_odds_sync", store.now_iso())
+    if totals:
+        store.save_odds_totals(con, "bsd", totals)
+    return len({(e["home"], e["away"]) for e in entries})
 
 
 # ---------------------------------------------------------------- football-data.org

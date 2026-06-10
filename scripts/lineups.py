@@ -14,6 +14,7 @@ import json
 import os
 import re
 import unicodedata
+import urllib.parse
 import urllib.request
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,8 +26,9 @@ FIFA_SEASON = 285023  # Mundial 2026
 _fifa_calendar_cache = None
 
 
-def _get_json(url, timeout=25):
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+def _get_json(url, timeout=25, headers=None):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0",
+                                               **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
@@ -199,18 +201,102 @@ def espn_lineups(home, away, date_utc):
     return None
 
 
-def get_lineups(home, away, date_utc):
-    """Cascada FIFA -> ESPN. Devuelve dict o None si no hay XI confirmadas."""
+# ---------------------------------------------------------- BSD (3ª fuente)
+
+BSD_HOST = "https://sports.bzzoiro.com"
+_bsd_lineup_cache = {}
+
+
+def _bsd_headers():
+    tok = os.getenv("BSD_TOKEN")
+    return {"Authorization": f"Token {tok}"} if tok else None
+
+
+def _bsd_event_id(home, away, date_utc):
+    hdr = _bsd_headers()
+    if not hdr:
+        return None
+    url = (f"{BSD_HOST}/api/v2/events/?team_name="
+           f"{urllib.parse.quote(home)}&date_from={date_utc}"
+           f"&date_to={date_utc}T23:59:59Z")
     try:
-        ln = fifa_lineups(home, away)
-        if ln:
-            return ln
-    except Exception:
-        pass
-    try:
-        return espn_lineups(home, away, date_utc)
+        data = _get_json(url, headers=hdr)
     except Exception:
         return None
+    for e in data.get("results", []):
+        if same_team(e.get("home_team", ""), home) and \
+                same_team(e.get("away_team", ""), away):
+            return e.get("id")
+    return None
+
+
+def _bsd_lineup_payload(home, away, date_utc):
+    """Respuesta cruda de /lineups/ del BSD (cacheada por evento)."""
+    key = (team_key(home), team_key(away), date_utc)
+    if key in _bsd_lineup_cache:
+        return _bsd_lineup_cache[key]
+    hdr = _bsd_headers()
+    ev = _bsd_event_id(home, away, date_utc) if hdr else None
+    payload = None
+    if ev:
+        try:
+            payload = _get_json(f"{BSD_HOST}/api/v2/events/{ev}/lineups/",
+                                headers=hdr)
+        except Exception:
+            payload = None
+    _bsd_lineup_cache[key] = payload
+    return payload
+
+
+def bsd_lineups(home, away, date_utc):
+    """XI confirmadas vía BSD (experimental) o None."""
+    d = _bsd_lineup_payload(home, away, date_utc)
+    if not d or d.get("lineup_status") != "confirmed":
+        return None
+    ln = d.get("lineups") or {}
+    out = {}
+    for side in ("home", "away"):
+        sd = ln.get(side) or {}
+        ps = sd.get("players") or []
+        if len(ps) != 11:
+            return None
+        out[side] = {"formation": sd.get("formation") or "",
+                     "players": [{"name": p.get("name") or
+                                  p.get("short_name", "?"),
+                                  "num": p.get("jersey_number"),
+                                  "pos": p.get("position"),
+                                  "captain": p.get("captain", False)}
+                                 for p in ps]}
+    out["source"] = "BSD"
+    return out
+
+
+def bsd_unavailable(home, away, date_utc):
+    """Bajas (lesionados/suspendidos) por lado: {'home': [...], 'away': [...]}
+    con name/status/reason, o None si no hay dato. EXPERIMENTAL."""
+    d = _bsd_lineup_payload(home, away, date_utc)
+    if not d:
+        return None
+    up = d.get("unavailable_players")
+    if not isinstance(up, dict) or not (up.get("home") or up.get("away")):
+        return None
+    return {s: [{"name": p.get("short_name") or p.get("name", "?"),
+                 "status": p.get("status", ""), "reason": p.get("reason", "")}
+                for p in (up.get(s) or [])] for s in ("home", "away")}
+
+
+def get_lineups(home, away, date_utc):
+    """Cascada FIFA -> ESPN -> BSD. None si no hay XI confirmadas."""
+    for fn in (lambda: fifa_lineups(home, away),
+               lambda: espn_lineups(home, away, date_utc),
+               lambda: bsd_lineups(home, away, date_utc)):
+        try:
+            ln = fn()
+            if ln:
+                return ln
+        except Exception:
+            continue
+    return None
 
 
 def lineups_confirmed(home, away, date_utc) -> bool:

@@ -24,7 +24,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from check_window import due_actions                 # noqa: E402
-from lineups import get_lineups, marker_read, marker_write  # noqa: E402
+from lineups import (bsd_unavailable, get_lineups,   # noqa: E402
+                     marker_read, marker_write)
 from predictor import predict as P                  # noqa: E402
 from predictor import sources, store                # noqa: E402
 from predictor.cli import ensure_fit, known_teams   # noqa: E402
@@ -91,7 +92,23 @@ def _market_block(pred, prev_marker):
     return out
 
 
-def build_message(tipo, pred, fx, ko, lineups, prev_marker):
+def _fmt_bajas(pred, bajas):
+    if not bajas:
+        return []
+    out = ["🚑 Bajas (lesión/sanción, fuente BSD experimental):"]
+    for side, label in (("home", pred["home"]), ("away", pred["away"])):
+        items = bajas.get(side) or []
+        if items:
+            det = ", ".join(
+                f"{p['name']}" + (f" ({p['reason']})" if p.get("reason") else "")
+                for p in items[:6])
+            out.append(f"   {html.escape(label)}: {html.escape(det)}")
+        else:
+            out.append(f"   {html.escape(label)}: sin bajas reportadas")
+    return out
+
+
+def build_message(tipo, pred, fx, ko, lineups, prev_marker, bajas=None):
     h, a = html.escape(pred["home"]), html.escape(pred["away"])
     head = ("🚨 <b>INFORME DE CIERRE</b>" if tipo == "cierre"
             else "📅 <b>INFORME PREVIA (~3 h antes)</b>")
@@ -110,6 +127,7 @@ def build_message(tipo, pred, fx, ko, lineups, prev_marker):
         else:
             lines.append("⚠️ FIFA aún no publica las XI — informe enviado "
                          "para que alcances a registrar tu marcador")
+        lines += _fmt_bajas(pred, bajas)
         lines.append("")
     alts = " · ".join(f"{s} ({p:.1%})" for s, p in pred["top_scores"][1:4])
     lines.append(f"🎯 Marcador más probable: <b>{pred['top_score']}</b> "
@@ -170,12 +188,16 @@ def main():
         pred = P.predict_match(con, fit, fx)
         store.save_prediction(con, {**pred, "data_version":
                                     {"via": f"telegram-{d['tipo']}"}})
-        lineups = None
+        lineups, bajas = None, None
         if d["tipo"] == "cierre":
             lineups = get_lineups(d["home"], d["away"], d["date_utc"])
+            try:
+                bajas = bsd_unavailable(d["home"], d["away"], d["date_utc"])
+            except Exception:
+                bajas = None
         prev_marker = marker_read(d["date_utc"], d["home"], d["away"], "previa")
         msg = build_message(d["tipo"], pred, fx, d["kickoff"], lineups,
-                            prev_marker)
+                            prev_marker, bajas=bajas)
         if dry:
             print("─" * 50)
             print(msg)

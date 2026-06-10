@@ -37,6 +37,7 @@ jobs:
         id: check
         env:
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          BSD_TOKEN: ${{ secrets.BSD_TOKEN }}
           FORCE_TYPE: ${{ inputs.force_type }}
         run: python3 scripts/check_window.py | tee -a "$GITHUB_OUTPUT"
 
@@ -57,6 +58,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          BSD_TOKEN: ${{ secrets.BSD_TOKEN }}
           FORCE_TYPE: ${{ inputs.force_type }}
         run: python scripts/notify_telegram.py
 
