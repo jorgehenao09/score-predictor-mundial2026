@@ -88,6 +88,27 @@ sin verificar), L5 lesiones/plantillas (sin fuente estructurada gratis —
 pendiente: entrada manual ponderada por importancia del jugador),
 L8 intangibles (solo heurísticas de descanso; falta rotación esperada).
 
+## Informe Telegram en la nube (sin laptop encendida)
+
+- Repo privado: `jorgehenao09/score-predictor-mundial2026` (GitHub).
+- `.github/workflows/telegram.yml`: cron horario (minuto 7). Compuerta barata
+  `scripts/check_window.py` (solo stdlib, ~5 s): si ningún partido empieza en
+  la ventana [2.5 h, 3.5 h) sale sin instalar nada → ~360 min/mes, dentro del
+  free tier privado (2000 min). Si hay partido: instala deps (pip cacheado),
+  reconstruye la base desde las fuentes públicas, ajusta el modelo, pide
+  cuotas (1 crédito) y envía el informe vía `scripts/notify_telegram.py`.
+- La ventana de 1 h + cron horario garantiza 1 aviso por partido sin estado
+  persistente (raro caso de duplicado solo si un run se retrasa >50 min).
+- Horas de inicio: football-data.org (primaria) → TheSportsDB (respaldo);
+  martj42 solo tiene fechas, no horas.
+- Secrets del repo: FOOTBALL_DATA_TOKEN y ODDS_API_KEY (configurados),
+  TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID (los pone el usuario).
+- Test manual: pestaña Actions → "Informe Telegram" → Run workflow con
+  `force_next` marcado (envía el próximo partido aunque falten días).
+- Nota: el consumo de créditos de The Odds API desde la nube NO aparece en el
+  contador local (`estado`); presupuesto combinado ≈ 60 local + ~120 nube
+  por mes, dentro de 500.
+
 ## Estado y pendientes
 
 - [x] Núcleo completo y validado (ratings, de-vig, CLI, persistencia, backtest)
