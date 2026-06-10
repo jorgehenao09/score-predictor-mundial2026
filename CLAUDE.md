@@ -88,26 +88,39 @@ sin verificar), L5 lesiones/plantillas (sin fuente estructurada gratis —
 pendiente: entrada manual ponderada por importancia del jugador),
 L8 intangibles (solo heurísticas de descanso; falta rotación esperada).
 
-## Informe Telegram en la nube (sin laptop encendida)
+## Informes Telegram en la nube (sin laptop encendida)
 
-- Repo privado: `jorgehenao09/score-predictor-mundial2026` (GitHub).
-- `.github/workflows/telegram.yml`: cron horario (minuto 7). Compuerta barata
-  `scripts/check_window.py` (solo stdlib, ~5 s): si ningún partido empieza en
-  la ventana [2.5 h, 3.5 h) sale sin instalar nada → ~360 min/mes, dentro del
-  free tier privado (2000 min). Si hay partido: instala deps (pip cacheado),
-  reconstruye la base desde las fuentes públicas, ajusta el modelo, pide
-  cuotas (1 crédito) y envía el informe vía `scripts/notify_telegram.py`.
-- La ventana de 1 h + cron horario garantiza 1 aviso por partido sin estado
-  persistente (raro caso de duplicado solo si un run se retrasa >50 min).
-- Horas de inicio: football-data.org (primaria) → TheSportsDB (respaldo);
-  martj42 solo tiene fechas, no horas.
-- Secrets del repo: FOOTBALL_DATA_TOKEN y ODDS_API_KEY (configurados),
-  TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID (los pone el usuario).
-- Test manual: pestaña Actions → "Informe Telegram" → Run workflow con
-  `force_next` marcado (envía el próximo partido aunque falten días).
-- Nota: el consumo de créditos de The Odds API desde la nube NO aparece en el
-  contador local (`estado`); presupuesto combinado ≈ 60 local + ~120 nube
-  por mes, dentro de 500.
+- Repo **público** (decisión del usuario, 2026-06-10: minutos ilimitados de
+  Actions): `jorgehenao09/score-predictor-mundial2026`. Canal privado
+  "Predicciones mundial 2026"; secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+  ODDS_API_KEY, FOOTBALL_DATA_TOKEN (todos configurados).
+- **DOS informes por partido** (`scripts/notify_telegram.py`):
+  - **PREVIA** — ventana [T-230, T-150) min: predicción + mercado + factores +
+    recordatorio de registrar marcador preliminar en golpredictor.
+  - **CIERRE** — ventana [T-85, T-10): se dispara apenas FIFA publique las XI
+    confirmadas; red de seguridad: a T-40 sale sí o sí aunque no haya XI.
+    Contiene XI de ambos equipos, movimiento del mercado desde la previa
+    (umbral: ≥4 pts "reaccionó FUERTE", ≥2 "moderado") y hora de bloqueo de
+    golpredictor.
+- Hechos verificados que fijan los tiempos (2026-06-10):
+  - Reglamento FIFA WC26 Art. 32: planillas se entregan a T-90; se publican
+    cuando ambos equipos entregan; en la práctica T-75..T-60.
+  - golpredictor.com bloquea ingreso/edición a **T-10** (regulation.aspx/faq).
+  - Kickoffs del torneo: todos entre 16:00 y 04:00 UTC; solo 5 partidos a :30.
+- **Alineaciones** (`scripts/lineups.py`, solo stdlib): api.fifa.com primaria
+  (calendar → IdMatch/IdStage; live endpoint: 11 jugadores Status==1 por
+  equipo = confirmadas; competición 17, temporada 285023) → ESPN summary
+  (rosters con starter:true) de respaldo. FotMob documentado como 3ª opción
+  pero no implementado (riesgo de bloqueo).
+- **Cron cada 10 min** (minutos 4,14,…) horas UTC 12-23 y 0-3. Compuerta
+  stdlib `scripts/check_window.py` (~5-10 s si no toca nada). Dedupe por
+  **marcadores** en `data/notified/` (JSON por partido+tipo, commiteados por
+  el workflow con permissions contents:write y push con rebase-retry). El
+  marcador de la previa guarda las probs del mercado → el cierre calcula el
+  delta. FORCE_TYPE=previa|cierre fuerza tests SIN escribir marcador.
+- Consumo The Odds API: 1 crédito por informe enviado (~208 en el torneo) +
+  snapshots locales; el contador local (`estado`) no ve el consumo de la nube.
+- Test manual: Actions → Run workflow → force_type=previa|cierre.
 
 ## Estado y pendientes
 
