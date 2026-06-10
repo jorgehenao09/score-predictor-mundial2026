@@ -191,16 +191,19 @@ def fetch_odds(con, known_teams, force=False):
     used = store.requests_this_month(con, "odds_api")
     if used >= 495:
         return 0, f"odds_api al límite mensual ({used}/500): no pido más"
+    # h2h + totals en una llamada = 2 créditos (mercados × regiones).
+    # El mercado de totales (over/under) alimenta la matriz de goles
+    # implícita del mercado, no solo el 1X2.
     url = (f"{ODDS_HOST}/sports/soccer_fifa_world_cup/odds/"
-           f"?apiKey={key}&regions=eu&markets=h2h&oddsFormat=decimal")
+           f"?apiKey={key}&regions=eu&markets=h2h,totals&oddsFormat=decimal")
     try:
         text = _get(url)
     except requests.HTTPError as e:
         return 0, f"The Odds API error: {e}"
-    store.log_request(con, "odds_api")
+    store.log_request(con, "odds_api", n=2)
     _write_cache("odds_last.json", text)
     games = json.loads(text)
-    entries = []
+    entries, totals = [], []
     for g in games:
         h = canonical(g.get("home_team", ""), known_teams)
         a = canonical(g.get("away_team", ""), known_teams)
@@ -208,30 +211,50 @@ def fetch_odds(con, known_teams, force=False):
             continue
         for bk in g.get("bookmakers", []):
             for mk in bk.get("markets", []):
-                if mk.get("key") != "h2h":
-                    continue
-                prices = {}
-                for o in mk.get("outcomes", []):
-                    nm = o.get("name", "")
-                    if nm == "Draw":
-                        prices["draw"] = o["price"]
-                    else:
-                        cn = canonical(nm, known_teams)
-                        if cn == h:
-                            prices["home"] = o["price"]
-                        elif cn == a:
-                            prices["away"] = o["price"]
-                if len(prices) == 3:
-                    entries.append({
-                        "home": h, "away": a,
-                        "commence_time": g.get("commence_time", ""),
-                        "bookmaker": bk.get("key", "?"),
-                        "home_odds": prices["home"],
-                        "draw_odds": prices["draw"],
-                        "away_odds": prices["away"]})
+                if mk.get("key") == "h2h":
+                    prices = {}
+                    for o in mk.get("outcomes", []):
+                        nm = o.get("name", "")
+                        if nm == "Draw":
+                            prices["draw"] = o["price"]
+                        else:
+                            cn = canonical(nm, known_teams)
+                            if cn == h:
+                                prices["home"] = o["price"]
+                            elif cn == a:
+                                prices["away"] = o["price"]
+                    if len(prices) == 3:
+                        entries.append({
+                            "home": h, "away": a,
+                            "commence_time": g.get("commence_time", ""),
+                            "bookmaker": bk.get("key", "?"),
+                            "home_odds": prices["home"],
+                            "draw_odds": prices["draw"],
+                            "away_odds": prices["away"]})
+                elif mk.get("key") == "totals":
+                    by_point = {}
+                    for o in mk.get("outcomes", []):
+                        pt = o.get("point")
+                        if pt is None:
+                            continue
+                        by_point.setdefault(pt, {})[o.get("name", "")] = o["price"]
+                    if not by_point:
+                        continue
+                    # preferir la línea 2.5; si no, la más cercana
+                    pt = min(by_point, key=lambda p: abs(p - 2.5))
+                    pr = by_point[pt]
+                    if "Over" in pr and "Under" in pr:
+                        totals.append({
+                            "home": h, "away": a,
+                            "commence_time": g.get("commence_time", ""),
+                            "bookmaker": bk.get("key", "?"), "point": pt,
+                            "over_odds": pr["Over"],
+                            "under_odds": pr["Under"]})
     if entries:
         store.save_odds_snapshot(con, "odds_api", entries)
         store.set_meta(con, "last_odds_sync", store.now_iso())
+    if totals:
+        store.save_odds_totals(con, "odds_api", totals)
     n_matches = len({(e['home'], e['away']) for e in entries})
     return n_matches, warn_if_near_cap(con, "odds_api")
 

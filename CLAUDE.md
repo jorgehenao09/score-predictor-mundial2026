@@ -61,6 +61,25 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
 - Sin xG: no existe fuente gratuita fiable de xG internacional (ver abajo).
   El filtrado de suerte recae en el decaimiento temporal + peso por rival
   implícito en el modelo.
+- **Mezcla modelo+mercado (2026-06-10)**: el marcador final sale de
+  `M = (1-w)·M_modelo + w·M_mercado` con w=0.5 (env `PREDICTOR_BLEND`).
+  La matriz del mercado se resuelve con `predict.implied_lambdas`: las λ que
+  reproducen el 1X2 Shin + P(over) del mercado de totales (The Odds API pide
+  `markets=h2h,totals` = 2 créditos/llamada; línea modal, normalmente 2.5).
+  Solver validado: recupera λ conocidas con error <0.001. `precision` compara
+  los tres motores (puro/mercado/mezcla) sobre partidos resueltos
+  (columnas model_p_* en predictions, migración idempotente en store.connect).
+- **Calibración por marcador: medida y DESCARTADA** (resultado negativo
+  honesto): con 15.505 partidos out-of-sample 2010-2025, los ratios
+  observado/esperado por marcador quedaron cerca de 1 (1-1 crudo 0.92,
+  0-0 1.05) y al validar en WC2018+22 el exacto empeoraba (9.4%→8.6%).
+  `scripts/calibrate_scores.py` solo escribe la tabla si mejora; no mejoró.
+  `predictor/calibration.py` queda como identidad (hook listo si algún día
+  se regenera con más datos).
+- **Clima (2026-06-10)**: Open-Meteo (gratis, sin clave) con lat/lon de
+  `venues.py`; hora del kickoff desde football-data (martj42 no trae horas) o
+  pasada por el notificador. Penalización: ≥32°C −3%, ≥35°C −5% a ambos;
+  nota informativa desde 28°C. `predictor/weather.py`.
 
 ## Fuentes gratuitas (verificadas el 2026-06-09)
 

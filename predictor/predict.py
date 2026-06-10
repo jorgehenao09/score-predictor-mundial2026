@@ -5,11 +5,12 @@ Matriz de goles 0..MAX_GOALS con corrección Dixon-Coles, ajustes de contexto
 los factores en español.
 """
 
+import os
 from datetime import date
 
 import numpy as np
 
-from . import market, store
+from . import calibration, market, store, weather
 from .venues import HIGH_ALTITUDE_M, VENUES, altitude
 
 MAX_GOALS = 10
@@ -37,6 +38,82 @@ def score_matrix(lh, la, rho):
     M[1, 0] *= 1 + la * rho
     M[1, 1] *= 1 - rho
     return M / M.sum()
+
+
+def implied_lambdas(p_home, p_away, rho, p_over=None, point=2.5):
+    """Resuelve las medias de gol (λh, λa) implícitas en el mercado: las que
+    reproducen el 1X2 de-vigueado y, si hay mercado de totales, P(over).
+    Con solo 1X2 el sistema es exactamente determinado (2 ecuaciones/2
+    incógnitas); con totales queda sobredeterminado y se resuelve por mínimos
+    cuadrados. Devuelve (λh, λa) o None si no converge."""
+    from scipy.optimize import minimize as _minimize
+
+    def loss(x):
+        lh, la = np.exp(x)
+        M = score_matrix(lh, la, rho)
+        ph = float(np.tril(M, -1).sum())
+        pa = float(np.triu(M, 1).sum())
+        err = (ph - p_home) ** 2 + (pa - p_away) ** 2
+        if p_over is not None:
+            tot = np.add.outer(np.arange(MAX_GOALS + 1),
+                               np.arange(MAX_GOALS + 1))
+            pov = float(M[tot > point].sum())
+            err += (pov - p_over) ** 2
+        return err
+
+    # inicialización: total ~2.6 goles repartidos según el sesgo del 1X2
+    skew = np.clip(p_home - p_away, -0.6, 0.6)
+    x0 = np.log([1.3 * (1 + skew), max(1.3 * (1 - skew), 0.2)])
+    res = _minimize(loss, x0, method="Nelder-Mead",
+                    options={"xatol": 1e-4, "fatol": 1e-10, "maxiter": 400})
+    if not res.success or res.fun > 1e-4:
+        return None
+    lh, la = np.exp(res.x)
+    if not (0.05 < lh < 6 and 0.05 < la < 6):
+        return None
+    return float(lh), float(la)
+
+
+def market_matrix(con, home, away, rho):
+    """Matriz de goles implícita del mercado (1X2 Shin + totales si hay).
+    Devuelve (M, info) o (None, {})."""
+    mkt = market.consensus(store.latest_odds(con, home, away))
+    if not mkt:
+        return None, {}
+    mp_h, mp_d, mp_a, n_books, margin = mkt
+    tot = market.totals_consensus(store.latest_totals(con, home, away))
+    p_over, point = (tot[0], tot[1]) if tot else (None, 2.5)
+    lam = implied_lambdas(mp_h, mp_a, rho, p_over=p_over, point=point)
+    info = {"market_p_home": mp_h, "market_p_draw": mp_d, "market_p_away": mp_a,
+            "n_books": n_books, "margin": margin,
+            "market_p_over": p_over, "totals_point": point if tot else None}
+    if lam is None:
+        return None, info
+    return score_matrix(lam[0], lam[1], rho), info
+
+
+def _kickoff_hour_from_fd(con, home, away, match_date):
+    """Hora UTC del kickoff desde el caché de football-data (martj42 solo
+    trae fechas). None si no hay token/caché o no aparece el partido."""
+    from . import sources
+    from .names import canonical
+    try:
+        fd, _ = sources.fetch_fd_fixtures(con)
+    except Exception:
+        return None
+    known = {home, away}
+    for m in fd or []:
+        ud = m.get("utcDate", "")
+        if not ud.startswith(match_date):
+            continue
+        h = canonical((m.get("homeTeam") or {}).get("name", ""), known)
+        a = canonical((m.get("awayTeam") or {}).get("name", ""), known)
+        if h == home and a == away:
+            try:
+                return int(ud[11:13])
+            except ValueError:
+                return None
+    return None
 
 
 def rest_days(con, team, match_date):
@@ -112,14 +189,59 @@ def predict_match(con, fit, fixture):
             factors.append(f"Descanso: {tired} llega con {abs(diff)} días menos "
                            f"de recuperación (-{pen * 100:.0f}%)")
 
+    # --- clima (calor a la hora del partido)
+    ko_h = fixture.get("kickoff_hour")
+    if ko_h is None:
+        ko_h = _kickoff_hour_from_fd(con, home, away, mdate)
+    if ko_h is not None and city:
+        t = weather.temp_at(city, mdate, ko_h)
+        mult, pen = weather.heat_penalty(t)
+        if pen:
+            lh *= mult
+            la *= mult
+            factors.append(f"Calor: {t:.0f}°C previstos en la sede a la hora "
+                           f"del partido (-{pen * 100:.0f}% goles esperados)")
+        elif t is not None and t >= 28:
+            factors.append(f"Clima: {t:.0f}°C previstos a la hora del partido")
+
     # --- forma reciente (informativa)
     fh, fa = recent_form(con, home, mdate), recent_form(con, away, mdate)
     if fh or fa:
         factors.append(f"Forma últimos 5: {home} [{fh}] · {away} [{fa}] "
                        "(ya ponderada en el modelo por recencia y rival)")
 
-    # --- matriz de goles
-    M = score_matrix(lh, la, fit["rho"])
+    # --- matriz del modelo (con calibración empírica de marcadores)
+    M_model = calibration.apply(score_matrix(lh, la, fit["rho"]))
+    mp = {"h": float(np.tril(M_model, -1).sum()),
+          "d": float(np.trace(M_model)),
+          "a": float(np.triu(M_model, 1).sum())}
+
+    # --- matriz implícita del mercado + mezcla
+    M_mkt, market_part = market_matrix(con, home, away, fit["rho"])
+    blend_w = float(os.getenv("PREDICTOR_BLEND", "0.5"))
+    if M_mkt is not None and 0 < blend_w <= 1:
+        M = (1 - blend_w) * M_model + blend_w * M_mkt
+        tot_note = ""
+        if market_part.get("market_p_over") is not None:
+            tot_note = (f", over {market_part['totals_point']}: "
+                        f"{market_part['market_p_over']:.0%}")
+        factors.append(
+            f"Marcador final = mezcla {1 - blend_w:.0%} modelo + "
+            f"{blend_w:.0%} matriz implícita del mercado "
+            f"({market_part['n_books']} casas{tot_note})")
+    else:
+        M = M_model
+    if market_part:
+        mh, md, ma = (market_part["market_p_home"],
+                      market_part["market_p_draw"],
+                      market_part["market_p_away"])
+        edge = max(abs(mp["h"] - mh), abs(mp["d"] - md), abs(mp["a"] - ma))
+        factors.append(
+            f"Mercado (Shin, {market_part['n_books']} casas): "
+            f"{mh:.0%}/{md:.0%}/{ma:.0%} vs modelo puro "
+            f"{mp['h']:.0%}/{mp['d']:.0%}/{mp['a']:.0%} "
+            f"(divergencia máx {edge * 100:.0f} pts)")
+
     p_home = float(np.tril(M, -1).sum())
     p_draw = float(np.trace(M))
     p_away = float(np.triu(M, 1).sum())
@@ -129,24 +251,14 @@ def predict_match(con, fit, fixture):
     top = flat[:5]
     (ti, tj), tp = top[0]
 
-    # --- mercado
-    mkt = market.consensus(store.latest_odds(con, home, away))
-    market_part = {}
-    if mkt:
-        mp_h, mp_d, mp_a, n_books, margin = mkt
-        market_part = {"market_p_home": mp_h, "market_p_draw": mp_d,
-                       "market_p_away": mp_a, "n_books": n_books,
-                       "margin": margin}
-        edge = max(abs(p_home - mp_h), abs(p_draw - mp_d), abs(p_away - mp_a))
-        factors.append(
-            f"Mercado (Shin, {n_books} casas): {mp_h:.0%}/{mp_d:.0%}/{mp_a:.0%} "
-            f"vs modelo {p_home:.0%}/{p_draw:.0%}/{p_away:.0%} "
-            f"(divergencia máx {edge * 100:.0f} pts)")
-
-    # --- confianza
+    # --- confianza (el acuerdo modelo-puro vs mercado informa fiabilidad)
     max_p = max(p_home, p_draw, p_away)
     sparse = min(eh, ea) < 10
-    agree = mkt and abs(max_p - max(mkt[0], mkt[1], mkt[2])) < 0.08
+    agree = market_part and abs(
+        max(mp["h"], mp["d"], mp["a"]) -
+        max(market_part.get("market_p_home", 0),
+            market_part.get("market_p_draw", 0),
+            market_part.get("market_p_away", 0))) < 0.08
     if sparse or max_p < 0.40:
         conf = "BAJA"
     elif (max_p > 0.55 and min(eh, ea) > 25) or agree:
@@ -157,10 +269,14 @@ def predict_match(con, fit, fixture):
         factors.append(f"Aviso: muestra efectiva escasa "
                        f"({home}: {eh:.0f}, {away}: {ea:.0f} partidos ponderados)")
 
+    market_part.pop("market_p_over", None)
+    market_part.pop("totals_point", None)
     return {
         "match_date": mdate, "home": home, "away": away, "city": city,
         "exp_home": float(lh), "exp_away": float(la),
         "p_home": p_home, "p_draw": p_draw, "p_away": p_away,
+        "model_p_home": mp["h"], "model_p_draw": mp["d"],
+        "model_p_away": mp["a"],
         "top_score": f"{ti}-{tj}", "top_score_prob": float(tp),
         "top_scores": [(f"{i}-{j}", float(p)) for (i, j), p in top],
         "confidence": conf,

@@ -146,15 +146,17 @@ def print_prediction(con, fit, fx, brief=False):
     print(f"    Goles esperados: {pred['exp_home']:.2f} - {pred['exp_away']:.2f}")
     print(f"\n  ► CONFIANZA: {pred['confidence']}")
     if "market_p_home" in pred:
-        print(f"\n  ► MODELO vs MERCADO ({pred['n_books']} casas, "
+        print(f"\n  ► MODELO vs MERCADO vs FINAL ({pred['n_books']} casas, "
               f"margen medio {pred['margin']:.1%}):")
-        for label, pm, pk in [(h, pred["p_home"], pred["market_p_home"]),
-                              ("Empate", pred["p_draw"], pred["market_p_draw"]),
-                              (a, pred["p_away"], pred["market_p_away"])]:
+        rows = [(h, "model_p_home", "market_p_home", "p_home"),
+                ("Empate", "model_p_draw", "market_p_draw", "p_draw"),
+                (a, "model_p_away", "market_p_away", "p_away")]
+        for label, km, kk, kf in rows:
+            pm, pk, pf = pred.get(km, 0), pred[kk], pred[kf]
             d = pm - pk
             flag = "  ← divergencia" if abs(d) >= 0.07 else ""
-            print(f"    {label:<16} modelo {pm:>5.1%} · mercado {pk:>5.1%} "
-                  f"({d:+.1%}){flag}")
+            print(f"    {label:<16} puro {pm:>5.1%} · mercado {pk:>5.1%} "
+                  f"({d:+.1%}) · final {pf:>5.1%}{flag}")
     else:
         print("\n  ► MERCADO: sin cuotas disponibles "
               "(configura ODDS_API_KEY o ejecuta `sync`)")
@@ -294,7 +296,9 @@ def cmd_precision(args):
     con = store.connect()
     rows = con.execute(
         """SELECT p.home, p.away, p.match_date, p.p_home, p.p_draw, p.p_away,
-                  p.top_score, m.home_score, m.away_score
+                  p.top_score, m.home_score, m.away_score,
+                  p.model_p_home, p.model_p_draw, p.model_p_away,
+                  p.market_p_home, p.market_p_draw, p.market_p_away
            FROM predictions p JOIN matches m
              ON m.home=p.home AND m.away=p.away AND m.date=p.match_date
            WHERE m.home_score IS NOT NULL
@@ -305,23 +309,32 @@ def cmd_precision(args):
     if not rows:
         print("Aún no hay predicciones resueltas para evaluar.")
         return
-    briers, rpss, hits1x2, hits_exact = [], [], 0, 0
-    for h, a, d, ph, pd_, pa, ts, hs, as_ in rows:
-        outcome = 0 if hs > as_ else (1 if hs == as_ else 2)
-        probs = (ph, pd_, pa)
-        briers.append(P.brier(probs, outcome))
-        rpss.append(P.rps(probs, outcome))
-        if max(range(3), key=lambda i: probs[i]) == outcome:
-            hits1x2 += 1
-        if ts == f"{hs}-{as_}":
-            hits_exact += 1
+    # tres motores en paralelo: final (mezcla), modelo puro, mercado puro
+    engines = {"final (mezcla)": (3, 4, 5), "modelo puro": (9, 10, 11),
+               "mercado puro": (12, 13, 14)}
     n = len(rows)
-    print(f"\nPRECISIÓN ({n} predicciones resueltas)\n" + "─" * 40)
-    print(f"  Brier medio (1X2):    {sum(briers) / n:.4f}  (0=perfecto, "
-          "0.667=azar uniforme)")
-    print(f"  RPS medio:            {sum(rpss) / n:.4f}  (0=perfecto)")
-    print(f"  Acierto 1X2:          {hits1x2}/{n} ({hits1x2 / n:.0%})")
-    print(f"  Acierto marcador:     {hits_exact}/{n} ({hits_exact / n:.0%})")
+    hits_exact = sum(1 for r in rows if r[6] == f"{r[7]}-{r[8]}")
+    print(f"\nPRECISIÓN ({n} predicciones resueltas)\n" + "─" * 56)
+    print(f"  {'motor':<16} {'Brier':>7} {'RPS':>7} {'1X2':>6}")
+    for name, (ih, id_, ia) in engines.items():
+        briers, rpss, hits = [], [], 0
+        m = 0
+        for r in rows:
+            probs = (r[ih], r[id_], r[ia])
+            if any(p is None for p in probs):
+                continue
+            m += 1
+            outcome = 0 if r[7] > r[8] else (1 if r[7] == r[8] else 2)
+            briers.append(P.brier(probs, outcome))
+            rpss.append(P.rps(probs, outcome))
+            if max(range(3), key=lambda i: probs[i]) == outcome:
+                hits += 1
+        if m:
+            print(f"  {name:<16} {sum(briers) / m:>7.4f} "
+                  f"{sum(rpss) / m:>7.4f} {hits / m:>6.0%}  ({m} partidos)")
+    print(f"  Acierto marcador exacto (mezcla): {hits_exact}/{n} "
+          f"({hits_exact / n:.0%})")
+    print("  Referencia: azar uniforme Brier 0.667 · casas RPS ~0.18-0.19")
 
 
 def cmd_panel(args):

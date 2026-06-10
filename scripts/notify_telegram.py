@@ -166,6 +166,7 @@ def main():
         h = canonical(d["home"], kt) or d["home"]
         a = canonical(d["away"], kt) or d["away"]
         fx = find_fixture_row(con, h, a, d["kickoff"])
+        fx["kickoff_hour"] = d["kickoff"].hour  # para la capa de clima
         pred = P.predict_match(con, fit, fx)
         store.save_prediction(con, {**pred, "data_version":
                                     {"via": f"telegram-{d['tipo']}"}})

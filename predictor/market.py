@@ -67,6 +67,25 @@ def consensus(book_odds_rows):
     return med[0], med[1], med[2], len(probs), statistics.mean(margins)
 
 
+def totals_consensus(rows):
+    """rows: (bookmaker, point, over_odds, under_odds, fetched_at).
+    Devuelve (p_over, point, n_casas) con Shin por casa y mediana, o None.
+    Solo se usan casas con la línea modal (típicamente 2.5)."""
+    if not rows:
+        return None
+    points = [r[1] for r in rows]
+    point = statistics.mode(points)
+    ps = []
+    for _, pt, over, under, _ in rows:
+        if pt != point or not over or not under or over <= 1 or under <= 1:
+            continue
+        p = shin([over, under])
+        ps.append(p[0])
+    if not ps:
+        return None
+    return statistics.median(ps), point, len(ps)
+
+
 if __name__ == "__main__":
     # comprobación rápida de la matemática (sin framework de tests, a pedido
     # del usuario): margen conocido, simetrías y recuperación del caso justo

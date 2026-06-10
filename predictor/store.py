@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS predictions (
     market_p_home REAL, market_p_draw REAL, market_p_away REAL,
     data_version TEXT
 );
+CREATE TABLE IF NOT EXISTS odds_totals (
+    fetched_at TEXT, source TEXT, home TEXT, away TEXT,
+    commence_time TEXT, bookmaker TEXT,
+    point REAL, over_odds REAL, under_odds REAL
+);
 CREATE TABLE IF NOT EXISTS request_log (
     source TEXT, day TEXT, count INTEGER,
     PRIMARY KEY (source, day)
@@ -60,6 +65,12 @@ def connect() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     con.executescript(SCHEMA)
+    # migraciones idempotentes sobre bases ya creadas
+    for col in ("model_p_home", "model_p_draw", "model_p_away"):
+        try:
+            con.execute(f"ALTER TABLE predictions ADD COLUMN {col} REAL")
+        except sqlite3.OperationalError:
+            pass  # ya existe
     return con
 
 
@@ -123,6 +134,26 @@ def save_odds_snapshot(con, source: str, entries):
     con.commit()
 
 
+def save_odds_totals(con, source: str, entries):
+    ts = now_iso()
+    con.executemany(
+        "INSERT INTO odds_totals VALUES (?,?,?,?,?,?,?,?,?)",
+        [(ts, source, e["home"], e["away"], e.get("commence_time", ""),
+          e["bookmaker"], e["point"], e["over_odds"], e["under_odds"])
+         for e in entries])
+    con.commit()
+
+
+def latest_totals(con, home: str, away: str):
+    """Último snapshot de over/under por bookmaker (línea principal)."""
+    return con.execute(
+        """SELECT bookmaker, point, over_odds, under_odds, fetched_at
+           FROM odds_totals WHERE home=? AND away=?
+           AND fetched_at = (SELECT MAX(fetched_at) FROM odds_totals
+                             WHERE home=? AND away=?)""",
+        (home, away, home, away)).fetchall()
+
+
 def latest_odds(con, home: str, away: str):
     """Último snapshot de cuotas 1X2 por bookmaker para un partido."""
     rows = con.execute(
@@ -177,13 +208,15 @@ def save_prediction(con, p: dict) -> int:
         """INSERT INTO predictions (created_at, match_date, home, away, city,
            exp_home, exp_away, p_home, p_draw, p_away, top_score,
            top_score_prob, confidence, explanation,
-           market_p_home, market_p_draw, market_p_away, data_version)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           market_p_home, market_p_draw, market_p_away, data_version,
+           model_p_home, model_p_draw, model_p_away)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (now_iso(), p["match_date"], p["home"], p["away"], p.get("city", ""),
          p["exp_home"], p["exp_away"], p["p_home"], p["p_draw"], p["p_away"],
          p["top_score"], p["top_score_prob"], p["confidence"],
          p["explanation"], p.get("market_p_home"), p.get("market_p_draw"),
-         p.get("market_p_away"), json.dumps(p.get("data_version", {}))))
+         p.get("market_p_away"), json.dumps(p.get("data_version", {})),
+         p.get("model_p_home"), p.get("model_p_draw"), p.get("model_p_away")))
     con.commit()
     return cur.lastrowid
 
