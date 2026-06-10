@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Compuerta barata (solo stdlib, ~5 s): si no hay partido en ~3 h,
       # el job termina aquí y casi no consume minutos.
@@ -30,7 +30,7 @@ jobs:
           FORCE_NEXT: ${{ inputs.force_next && '1' || '' }}
         run: python3 scripts/check_window.py | tee -a "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: steps.check.outputs.found == 'true'
         with:
           python-version: "3.12"
