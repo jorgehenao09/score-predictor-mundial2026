@@ -1,18 +1,26 @@
-name: Informe Telegram (~3h antes de cada partido)
+name: Informe Telegram (previa 3h + cierre con alineaciones)
 
 on:
   schedule:
-    - cron: "7 * * * *"   # cada hora, minuto 7 (los :00 sufren retrasos en GitHub)
+    # Cada 10 min en las horas relevantes: kickoffs van de 16:00 a 04:00 UTC,
+    # la ventana previa empieza a T-230 (desde ~12:10 UTC) y la de cierre
+    # termina a T-10 (hasta ~03:50 UTC). Repo público: minutos ilimitados.
+    - cron: "4,14,24,34,44,54 12-23 * * *"
+    - cron: "4,14,24,34,44,54 0-3 * * *"
   workflow_dispatch:
     inputs:
-      force_next:
-        description: "Enviar el próximo partido aunque falten días (test)"
-        type: boolean
-        default: false
+      force_type:
+        description: "Forzar informe del próximo partido (test)"
+        type: choice
+        options: ["none", "previa", "cierre"]
+        default: "none"
 
 concurrency:
   group: telegram
   cancel-in-progress: false
+
+permissions:
+  contents: write   # para commitear los marcadores de data/notified/
 
 jobs:
   informe:
@@ -20,14 +28,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-      # Compuerta barata (solo stdlib, ~5 s): si no hay partido en ~3 h,
-      # el job termina aquí y casi no consume minutos.
-      - name: "¿Hay partido en ~3 horas?"
+      # Compuerta barata (solo stdlib, ~5-10 s): ¿toca enviar algo AHORA?
+      # (previa en ventana, o cierre con XI ya publicadas / tope T-40)
+      - name: "¿Toca enviar algún informe?"
         id: check
         env:
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
-          FORCE_NEXT: ${{ inputs.force_next && '1' || '' }}
+          FORCE_TYPE: ${{ inputs.force_type }}
         run: python3 scripts/check_window.py | tee -a "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v6
@@ -40,12 +50,27 @@ jobs:
         if: steps.check.outputs.found == 'true'
         run: pip install -r requirements.txt
 
-      - name: Generar y enviar informe
+      - name: Generar y enviar informes
         if: steps.check.outputs.found == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
-          FORCE_NEXT: ${{ inputs.force_next && '1' || '' }}
+          FORCE_TYPE: ${{ inputs.force_type }}
         run: python scripts/notify_telegram.py
+
+      # Los marcadores deduplican: sin esto, el cron de 10 min repetiría envíos
+      - name: Persistir marcadores de envío
+        if: steps.check.outputs.found == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/notified || true
+          if ! git diff --cached --quiet; then
+            git commit -m "markers: $(date -u +%FT%TZ)"
+            for i in 1 2 3; do
+              git push && break
+              git pull --rebase
+            done
+          fi

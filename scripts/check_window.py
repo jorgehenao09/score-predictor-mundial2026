@@ -1,14 +1,17 @@
-"""Comprueba si hay partidos del Mundial que arranquen en ~3 horas.
+"""Decide qué informes tocan AHORA. Solo stdlib (compuerta barata del cron).
 
-Solo stdlib (sin pip): se usa como compuerta barata en GitHub Actions para
-no instalar numpy/scipy cada hora si no hay nada que notificar.
+Dos informes por partido, deduplicados con marcadores en data/notified/
+(commiteados al repo por el workflow — el estado sobrevive entre runs):
 
-Fuente primaria: football-data.org (hora exacta de inicio, utcDate).
-Respaldo: TheSportsDB (clave pública).
+  PREVIA  — ventana [T-230 min, T-150 min): el informe de las ~3 h.
+  CIERRE  — ventana [T-10, T-85): se dispara apenas FIFA/ESPN publiquen las
+            XI confirmadas (reglamento: entrega T-90, publicación típica
+            T-75..T-60), o sí o sí a T-40 aunque no haya alineaciones.
+            golpredictor.com bloquea el ingreso a T-10 (verificado en sus
+            reglas), así que el peor caso deja ~25-30 min de margen.
 
-Uso:  python3 scripts/check_window.py            -> imprime found=true|false
-      FORCE_NEXT=1 python3 scripts/check_window.py  -> el próximo partido,
-                                                       esté o no en ventana
+Salida (stdout): found=true|false  — y en stderr el detalle.
+FORCE_TYPE=previa|cierre fuerza el próximo partido (test).
 """
 
 import json
@@ -17,8 +20,12 @@ import sys
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-WINDOW_START_H = 2.5   # notificar partidos que empiezan entre 2.5 y 3.5 h
-WINDOW_END_H = 3.5     # desde ahora (el cron corre cada hora: 1 aviso/partido)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from lineups import lineups_confirmed, marker_read  # noqa: E402
+
+PREVIA_MIN, PREVIA_MAX = 150, 230      # minutos antes del kickoff
+CIERRE_MIN, CIERRE_MAX = 10, 85
+CIERRE_FALLBACK = 40                   # sin XI a T-40: enviar igual
 
 
 def _get_json(url, headers=None):
@@ -41,11 +48,10 @@ def from_football_data():
     for m in data.get("matches", []):
         if m.get("status") not in ("SCHEDULED", "TIMED"):
             continue
-        out.append({
-            "utc": m["utcDate"],
-            "home": (m.get("homeTeam") or {}).get("name", ""),
-            "away": (m.get("awayTeam") or {}).get("name", ""),
-        })
+        h = (m.get("homeTeam") or {}).get("name")
+        a = (m.get("awayTeam") or {}).get("name")
+        if h and a:
+            out.append({"utc": m["utcDate"], "home": h, "away": a})
     return out
 
 
@@ -57,38 +63,61 @@ def from_thesportsdb():
         return None
     out = []
     for e in data.get("events") or []:
-        ts = e.get("strTimestamp")  # "2026-06-11T23:00:00"
+        ts = e.get("strTimestamp")
         if not ts or e.get("intHomeScore") is not None:
             continue
-        out.append({"utc": ts + "Z" if not ts.endswith("Z") else ts,
+        out.append({"utc": ts if ts.endswith("Z") else ts + "Z",
                     "home": e.get("strHomeTeam", ""),
                     "away": e.get("strAwayTeam", "")})
     return out
 
 
-def matches_in_window(force_next=False):
+def upcoming_fixtures():
     fixtures = from_football_data()
     if fixtures is None:
         fixtures = from_thesportsdb() or []
     now = datetime.now(timezone.utc)
-    parsed = []
+    out = []
     for f in fixtures:
         try:
             ko = datetime.fromisoformat(f["utc"].replace("Z", "+00:00"))
         except ValueError:
             continue
         if ko > now:
-            parsed.append({**f, "kickoff": ko})
-    parsed.sort(key=lambda f: f["kickoff"])
-    if force_next:
-        return parsed[:1]
-    lo = now + timedelta(hours=WINDOW_START_H)
-    hi = now + timedelta(hours=WINDOW_END_H)
-    return [f for f in parsed if lo <= f["kickoff"] < hi]
+            out.append({**f, "kickoff": ko,
+                        "date_utc": ko.strftime("%Y-%m-%d")})
+    out.sort(key=lambda f: f["kickoff"])
+    return out
+
+
+def due_actions(probe_lineups=True):
+    """Lista de {fixture..., tipo} que deben notificarse ahora mismo."""
+    force = os.getenv("FORCE_TYPE", "").strip().lower()
+    fixtures = upcoming_fixtures()
+    if force in ("previa", "cierre"):
+        return [{**f, "tipo": force} for f in fixtures[:1]]
+    now = datetime.now(timezone.utc)
+    due = []
+    for f in fixtures:
+        mins = (f["kickoff"] - now).total_seconds() / 60
+        if mins > PREVIA_MAX:
+            break  # ordenados por hora: nada más por revisar
+        if PREVIA_MIN <= mins < PREVIA_MAX and \
+                marker_read(f["date_utc"], f["home"], f["away"], "previa") is None:
+            due.append({**f, "tipo": "previa"})
+        elif CIERRE_MIN <= mins < CIERRE_MAX and \
+                marker_read(f["date_utc"], f["home"], f["away"], "cierre") is None:
+            ready = mins <= CIERRE_FALLBACK
+            if not ready and probe_lineups:
+                ready = lineups_confirmed(f["home"], f["away"], f["date_utc"])
+            if ready:
+                due.append({**f, "tipo": "cierre"})
+    return due
 
 
 if __name__ == "__main__":
-    found = matches_in_window(force_next=bool(os.getenv("FORCE_NEXT")))
-    print(f"found={'true' if found else 'false'}")
-    for f in found:
-        print(f"# {f['utc']} {f['home']} vs {f['away']}", file=sys.stderr)
+    due = due_actions()
+    print(f"found={'true' if due else 'false'}")
+    for d in due:
+        print(f"# {d['tipo'].upper()} {d['utc']} {d['home']} vs {d['away']}",
+              file=sys.stderr)
