@@ -92,7 +92,7 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
 | football-data.org | Fixtures/resultados WC (validación cruzada) | 10 req/min | `FOOTBALL_DATA_TOKEN` | Respaldo/validación |
 | TheSportsDB (clave pública `123`, liga 4429) | Fixtures, escudos, sedes | ~30 req/min | no | Respaldo |
 | Wikipedia | Altitud/datos de las 16 sedes | estático | no | Hardcodeado en `venues.py` |
-| BSD API (sports.bzzoiro.com) | xG, lesiones, alineaciones, cuotas — **SIN VERIFICAR** | desconocido | `BSD_TOKEN` | Experimental: dominio de ago-2025, cero huella en terceros. No apoyarse en él |
+| BSD API (sports.bzzoiro.com) | **AUDITADO 2026-06-10 con token**: bajas estructuradas (name/status/reason) ✓, XI confirmadas con `lineup_status` ✓, cuotas 16 casas que cruzan con nuestro consenso ✓, clima ✓, stats (big_chances) ✓. **xG NO disponible** (solo en LiveScore en vivo). Filtros con quirks (`team_name` en squads se ignora; usar `date_from/to`, `league_id=27`=WC2026) | 429 documentado, límite no especificado | `BSD_TOKEN` | Capa 5 (bajas) + 3ª fuente XI + respaldo de cuotas. Sigue siendo proveedor joven: siempre detrás de FIFA/ESPN/OddsAPI, nunca único |
 | ~~API-Football free~~ | — | temporadas actuales bloqueadas en el tier gratis (devuelve 200 vacíos) | — | **Descartada** |
 | ~~Understat / FotMob~~ | xG solo clubes / scraping bloqueado | — | — | **Descartadas** |
 
@@ -102,10 +102,14 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
 L4 contexto (altitud/descanso/local), L6 H2H (implícito en datos),
 L7 mercado (Shin + histórico propio de snapshots).
 
-**DÉBILES**: L2 xG (sin fuente gratuita internacional; única opción el BSD
-sin verificar), L5 lesiones/plantillas (sin fuente estructurada gratis —
-pendiente: entrada manual ponderada por importancia del jugador),
-L8 intangibles (solo heurísticas de descanso; falta rotación esperada).
+**MEDIA**: L5 lesiones/plantillas — el BSD (auditado) da bajas estructuradas
+con motivo; se muestran en el informe de cierre como información (no ajustan
+el modelo: sin valor de mercado por jugador, el ajuste cuantitativo lo da el
+movimiento del mercado post-alineaciones).
+
+**DÉBILES**: L2 xG (sin fuente gratuita internacional — el BSD solo lo tiene
+en vivo, no pre/post partido), L8 intangibles (solo heurísticas de descanso
+y calor; falta rotación esperada).
 
 ## Informes Telegram en la nube (sin laptop encendida)
 
