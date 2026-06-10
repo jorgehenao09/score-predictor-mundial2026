@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude update *)",
+      "Bash(claude *)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "nanobanana",
+    "stitch",
+    "21st-dev-magic"
+  ]
+}

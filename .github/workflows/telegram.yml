@@ -1,0 +1,51 @@
+name: Informe Telegram (~3h antes de cada partido)
+
+on:
+  schedule:
+    - cron: "7 * * * *"   # cada hora en el minuto 7 (los :00 sufren retrasos)
+  workflow_dispatch:
+    inputs:
+      force_next:
+        description: "Enviar el próximo partido aunque falten días (test)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: telegram
+  cancel-in-progress: false
+
+jobs:
+  informe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compuerta barata (solo stdlib, ~5 s): si no hay partido en ~3 h,
+      # el job termina aquí y casi no consume minutos.
+      - name: "¿Hay partido en ~3 horas?"
+        id: check
+        env:
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          FORCE_NEXT: ${{ inputs.force_next && '1' || '' }}
+        run: python3 scripts/check_window.py | tee -a "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.found == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        if: steps.check.outputs.found == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Generar y enviar informe
+        if: steps.check.outputs.found == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          FORCE_NEXT: ${{ inputs.force_next && '1' || '' }}
+        run: python scripts/notify_telegram.py
