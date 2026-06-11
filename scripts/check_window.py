@@ -23,9 +23,12 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from lineups import lineups_confirmed, marker_read  # noqa: E402
 
-PREVIA_MIN, PREVIA_MAX = 150, 230      # minutos antes del kickoff
-CIERRE_MIN, CIERRE_MAX = 10, 85
-CIERRE_FALLBACK = 40                   # sin XI a T-40: enviar igual
+# Ventanas ANCHAS a propósito: los crons de GitHub se omiten bajo carga
+# (el 2026-06-11 saltó 2.5 h seguidas y se perdió un cierre), así que
+# cualquier run que caiga dentro dispara; los marcadores deduplican.
+PREVIA_MIN, PREVIA_MAX = 150, 300      # minutos antes del kickoff
+CIERRE_MIN, CIERRE_MAX = 10, 100
+CIERRE_FALLBACK = 60                   # sin XI a T-60: enviar igual
 
 
 def _get_json(url, headers=None):

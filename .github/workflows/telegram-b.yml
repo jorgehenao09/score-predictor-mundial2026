@@ -1,26 +1,23 @@
-name: Informe Telegram (previa 3h + cierre con alineaciones)
+name: Informe Telegram B (cola de schedule redundante)
+
+# Workflow espejo de telegram.yml con minutos desfasados: GitHub programa
+# cada workflow en colas independientes, así que tener dos duplica la
+# probabilidad de que algún run caiga dentro de las ventanas cuando GitHub
+# se salta crons (pasó el 2026-06-11: 2.5 h sin ejecutar nada).
+# Los marcadores en data/notified/ + el mismo concurrency group evitan
+# cualquier envío duplicado.
 
 on:
   schedule:
-    # Cada 10 min en las horas relevantes: kickoffs van de 16:00 a 04:00 UTC,
-    # la ventana previa empieza a T-230 (desde ~12:10 UTC) y la de cierre
-    # termina a T-10 (hasta ~03:50 UTC). Repo público: minutos ilimitados.
-    - cron: "4,24,44 12-23 * * *"
-    - cron: "4,24,44 0-3 * * *"
-  workflow_dispatch:
-    inputs:
-      force_type:
-        description: "Forzar informe del próximo partido (test)"
-        type: choice
-        options: ["none", "previa", "cierre"]
-        default: "none"
+    - cron: "14,34,54 12-23 * * *"
+    - cron: "14,34,54 0-3 * * *"
 
 concurrency:
   group: telegram
   cancel-in-progress: false
 
 permissions:
-  contents: write   # para commitear los marcadores de data/notified/
+  contents: write
 
 jobs:
   informe:
@@ -31,14 +28,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Compuerta barata (solo stdlib, ~5-10 s): ¿toca enviar algo AHORA?
-      # (previa en ventana, o cierre con XI ya publicadas / tope T-40)
       - name: "¿Toca enviar algún informe?"
         id: check
         env:
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
           BSD_TOKEN: ${{ secrets.BSD_TOKEN }}
-          FORCE_TYPE: ${{ inputs.force_type }}
         run: python3 scripts/check_window.py | tee -a "$GITHUB_OUTPUT"
 
       - uses: actions/setup-python@v6
@@ -59,10 +53,8 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
           BSD_TOKEN: ${{ secrets.BSD_TOKEN }}
-          FORCE_TYPE: ${{ inputs.force_type }}
         run: python scripts/notify_telegram.py
 
-      # Los marcadores deduplican: sin esto, el cron de 10 min repetiría envíos
       - name: Persistir marcadores de envío
         if: steps.check.outputs.found == 'true'
         run: |
