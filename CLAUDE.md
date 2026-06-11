@@ -62,7 +62,13 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
   El filtrado de suerte recae en el decaimiento temporal + peso por rival
   implícito en el modelo.
 - **Mezcla modelo+mercado (2026-06-10)**: el marcador final sale de
-  `M = (1-w)·M_modelo + w·M_mercado` con w=0.5 (env `PREDICTOR_BLEND`).
+  `M = (1-w)·M_modelo + w·M_mercado`. **El peso w se AUTOAJUSTA**
+  (`predictor/learning.py`, 2026-06-11): los marcadores de cierre guardan las
+  probs del modelo y del mercado por partido; con ≥6 partidos resueltos se
+  busca en grilla el w que minimiza el RPS y se encoge hacia 0.5 con 10
+  pseudo-partidos. La memoria son los marcadores commiteados (misma en local
+  y nube). Override manual: env `PREDICTOR_BLEND`. Validado con sintéticos:
+  mercado superior en 8 partidos → w 0.722.
   La matriz del mercado se resuelve con `predict.implied_lambdas`: las λ que
   reproducen el 1X2 Shin + P(over) del mercado de totales (The Odds API pide
   `markets=h2h,totals` = 2 créditos/llamada; línea modal, normalmente 2.5).

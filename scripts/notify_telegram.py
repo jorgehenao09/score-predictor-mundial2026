@@ -205,9 +205,13 @@ def main():
             send(token, chat_id, msg)
             print(f"Enviado [{d['tipo']}]: {h} vs {a}")
         payload = {"sent_at": store.now_iso(), "tipo": d["tipo"],
+                   "date": fx["date"], "home_c": h, "away_c": a,
                    "p_home": pred["p_home"], "p_draw": pred["p_draw"],
                    "p_away": pred["p_away"], "top_score": pred["top_score"],
-                   "lineups_source": (lineups or {}).get("source")}
+                   "lineups_source": (lineups or {}).get("source"),
+                   "model": {"ph": pred["model_p_home"],
+                             "pd": pred["model_p_draw"],
+                             "pa": pred["model_p_away"]}}
         if "market_p_home" in pred:
             payload["market"] = {"ph": pred["market_p_home"],
                                  "pd": pred["market_p_draw"],

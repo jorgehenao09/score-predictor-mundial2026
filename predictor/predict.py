@@ -10,7 +10,7 @@ from datetime import date
 
 import numpy as np
 
-from . import calibration, market, store, weather
+from . import calibration, learning, market, store, weather
 from .venues import HIGH_ALTITUDE_M, VENUES, altitude
 
 MAX_GOALS = 10
@@ -218,17 +218,23 @@ def predict_match(con, fit, fixture):
 
     # --- matriz implícita del mercado + mezcla
     M_mkt, market_part = market_matrix(con, home, away, fit["rho"])
-    blend_w = float(os.getenv("PREDICTOR_BLEND", "0.5"))
+    blend_w, n_learned = learning.current_blend(con)
     if M_mkt is not None and 0 < blend_w <= 1:
         M = (1 - blend_w) * M_model + blend_w * M_mkt
         tot_note = ""
         if market_part.get("market_p_over") is not None:
             tot_note = (f", over {market_part['totals_point']}: "
                         f"{market_part['market_p_over']:.0%}")
+        if n_learned == -1:
+            w_note = "peso fijado manualmente"
+        elif n_learned >= learning.MIN_RESOLVED:
+            w_note = f"peso aprendido de {n_learned} partidos resueltos"
+        else:
+            w_note = "peso inicial (aprenderá con los partidos resueltos)"
         factors.append(
             f"Marcador final = mezcla {1 - blend_w:.0%} modelo + "
-            f"{blend_w:.0%} matriz implícita del mercado "
-            f"({market_part['n_books']} casas{tot_note})")
+            f"{blend_w:.0%} mercado ({market_part['n_books']} casas{tot_note}; "
+            f"{w_note})")
     else:
         M = M_model
     if market_part:
