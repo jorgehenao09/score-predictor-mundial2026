@@ -1,0 +1,17 @@
+{
+ "sent_at": "2026-06-12T14:09:08Z",
+ "tipo": "previa",
+ "date": "2026-06-12",
+ "home_c": "Canada",
+ "away_c": "Bosnia and Herzegovina",
+ "p_home": 0.721483235305777,
+ "p_draw": 0.17575961894499664,
+ "p_away": 0.10275714574922644,
+ "top_score": "2-0",
+ "lineups_source": null,
+ "model": {
+  "ph": 0.721483235305777,
+  "pd": 0.17575961894499664,
+  "pa": 0.10275714574922644
+ }
+}
