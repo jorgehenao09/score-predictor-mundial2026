@@ -141,12 +141,28 @@ y calor; falta rotación esperada).
   equipo = confirmadas; competición 17, temporada 285023) → ESPN summary
   (rosters con starter:true) de respaldo. FotMob documentado como 3ª opción
   pero no implementado (riesgo de bloqueo).
-- **Cron cada 10 min** (minutos 4,14,…) horas UTC 12-23 y 0-3. Compuerta
-  stdlib `scripts/check_window.py` (~5-10 s si no toca nada). Dedupe por
-  **marcadores** en `data/notified/` (JSON por partido+tipo, commiteados por
-  el workflow con permissions contents:write y push con rebase-retry). El
-  marcador de la previa guarda las probs del mercado → el cierre calcula el
-  delta. FORCE_TYPE=previa|cierre fuerza tests SIN escribir marcador.
+- **Disparo (CRÍTICO, aprendido a golpes)**: el `schedule` de GitHub NO es
+  confiable — se saltó ambas colas >2 h el 11-jun y el 12-jun, perdiendo/casi
+  perdiendo cierres. `workflow_dispatch` sí es inmediato. Por eso hay TRES
+  capas (los marcadores deduplican entre todas):
+  1. `pacemaker.yml` (la principal, activada 2026-06-12 con OK del usuario):
+     cadena auto-perpetuada — cada eslabón ~1 h, dispara telegram.yml cada
+     10 min en horario 11:00-04:59 UTC y enciende el siguiente eslabón con
+     GITHUB_TOKEN (workflow_dispatch está exento de la prevención de
+     recursión). Anti-duplicados: un eslabón se apaga si detecta otro vivo.
+     Su cron horario solo reanima cadenas muertas.
+  2. Crons de telegram.yml (min 4,24,44) y telegram-b.yml (min 14,34,54),
+     colas independientes, horas UTC 12-23 y 0-3 — mejor que nada.
+  3. PENDIENTE: cron-job.org + fine-grained PAT del usuario (opción
+     ortodoxa); al activarla, retirar el marcapasos.
+- Compuerta stdlib `scripts/check_window.py` (~5-10 s si no toca nada).
+  Ventanas ANCHAS por la no-fiabilidad del cron: previa [T-300,T-150),
+  cierre [T-100,T-10) con tope sin-XI a T-60. Dedupe por **marcadores** en
+  `data/notified/` (JSON por partido+tipo, commiteados con
+  permissions contents:write y push con rebase-retry). El marcador de previa
+  guarda las probs del mercado → el cierre calcula el delta; el de cierre
+  guarda modelo+mercado → alimenta `learning.py`.
+  FORCE_TYPE=previa|cierre fuerza tests SIN escribir marcador.
 - Consumo The Odds API: 1 crédito por informe enviado (~208 en el torneo) +
   snapshots locales; el contador local (`estado`) no ve el consumo de la nube.
 - Test manual: Actions → Run workflow → force_type=previa|cierre.
