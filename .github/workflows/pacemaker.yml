@@ -1,0 +1,52 @@
+name: Marcapasos (dispara la verificación cada 10 min)
+
+# Los crons de `schedule` de GitHub se omiten sin garantía (perdimos los
+# cierres del 11-jun y casi el del 12-jun: ambas colas calladas >2 h).
+# En cambio `workflow_dispatch` es inmediato y confiable. Este workflow se
+# auto-perpetúa: cada eslabón corre ~1 h disparando telegram.yml cada 10 min
+# en horario de partidos (ventanas 11:00-04:59 UTC) y al final enciende el
+# siguiente eslabón. GITHUB_TOKEN puede crear eventos workflow_dispatch
+# (están exentos de la prevención de recursión de GitHub).
+# El cron de abajo solo REANIMA la cadena si muere; los duplicados se
+# auto-eliminan (un eslabón sale si detecta otro en ejecución) y los envíos
+# están deduplicados por marcadores + concurrency en telegram.yml.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "7 * * * *"   # reanimador de la cadena (sin garantía, no importa)
+
+permissions:
+  actions: write
+
+jobs:
+  latido:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Latir 6 veces y encadenar
+        run: |
+          # si ya hay otro eslabón vivo, este sobra
+          vivos=$(gh api "repos/$REPO/actions/workflows/pacemaker.yml/runs?status=in_progress&per_page=10" -q '.total_count')
+          if [ "$vivos" -gt 1 ]; then
+            echo "Ya hay una cadena viva ($vivos); me apago."
+            exit 0
+          fi
+          for i in 1 2 3 4 5 6; do
+            h=$(date -u +%H)
+            # horario de partidos: previas desde ~11:00 UTC, cierres hasta ~04:00
+            if [ "$h" -ge 11 ] || [ "$h" -le 4 ]; then
+              gh workflow run telegram.yml -R "$REPO" && \
+                echo "latido $i: telegram.yml disparado ($(date -u +%H:%M))" || \
+                echo "latido $i: fallo al disparar (sigo)"
+            else
+              echo "latido $i: fuera de horario ($(date -u +%H:%M) UTC)"
+            fi
+            [ "$i" -lt 6 ] && sleep 600
+          done
+          gh workflow run pacemaker.yml -R "$REPO" && echo "siguiente eslabón encendido"
+
+# (reindex)
