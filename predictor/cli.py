@@ -103,7 +103,9 @@ def print_prediction(con, fit, fx, brief=False):
 
     h, a = fx["home"], fx["away"]
     if brief:
-        print(f"  {fx['date']}  {h} vs {a}  →  {pred['top_score']}  "
+        gp = (f"  [golpredictor: {pred['gp_score']}]"
+              if pred["gp_score"] != pred["top_score"] else "")
+        print(f"  {fx['date']}  {h} vs {a}  →  {pred['top_score']}{gp}  "
               f"(1X2: {pred['p_home']:.0%}/{pred['p_draw']:.0%}/"
               f"{pred['p_away']:.0%}, conf. {pred['confidence']})")
         return
@@ -141,6 +143,12 @@ def print_prediction(con, fit, fx, brief=False):
           f"({pred['top_score_prob']:.1%})")
     others = "  ".join(f"{s} ({p:.1%})" for s, p in pred["top_scores"][1:4])
     print(f"    Alternativas: {others}")
+    rnd = "eliminatoria ×2" if pred.get("knockout") else "grupos"
+    print(f"\n  ► 🎯 PARA GOLPREDICTOR: {pred['gp_score']} "
+          f"({pred['gp_ev']:.1f} pts esperados, {rnd})")
+    if pred["gp_score"] != pred["top_score"]:
+        print(f"    (maximiza tus puntos; distinto del más probable porque "
+              f"equilibra resultado + goles + diferencia)")
     print(f"\n  ► 1X2:  {h} {pred['p_home']:.1%}  ·  "
           f"Empate {pred['p_draw']:.1%}  ·  {a} {pred['p_away']:.1%}")
     print(f"    Goles esperados: {pred['exp_home']:.2f} - {pred['exp_away']:.2f}")
@@ -298,7 +306,8 @@ def cmd_precision(args):
         """SELECT p.home, p.away, p.match_date, p.p_home, p.p_draw, p.p_away,
                   p.top_score, m.home_score, m.away_score,
                   p.model_p_home, p.model_p_draw, p.model_p_away,
-                  p.market_p_home, p.market_p_draw, p.market_p_away
+                  p.market_p_home, p.market_p_draw, p.market_p_away,
+                  p.gp_score
            FROM predictions p JOIN matches m
              ON m.home=p.home AND m.away=p.away AND m.date=p.match_date
            WHERE m.home_score IS NOT NULL
@@ -335,6 +344,32 @@ def cmd_precision(args):
     print(f"  Acierto marcador exacto (mezcla): {hits_exact}/{n} "
           f"({hits_exact / n:.0%})")
     print("  Referencia: azar uniforme Brier 0.667 · casas RPS ~0.18-0.19")
+
+    # --- puntos golpredictor: marcador modal vs óptimo-EV (tu objetivo real)
+    from . import golpredictor as gp
+    modal_pts = opt_pts = 0
+    nk = 0
+    for r in rows:
+        hs, as_, ts, gps = r[7], r[8], r[6], r[15]
+        ko = gp.is_knockout(r[2])
+        modal = tuple(map(int, ts.split("-")))
+        modal_pts += gp.points(modal, (hs, as_), ko)
+        if gps:
+            opt = tuple(map(int, gps.split("-")))
+            opt_pts += gp.points(opt, (hs, as_), ko)
+            nk += 1
+    print(f"\n  PUNTOS GOLPREDICTOR (tu objetivo)\n  " + "─" * 38)
+    print(f"  Marcador 'más probable': {modal_pts} pts "
+          f"({modal_pts / n:.2f}/partido)")
+    if nk:
+        delta = opt_pts - sum(  # comparar solo en partidos con gp_score
+            gp.points(tuple(map(int, r[6].split("-"))), (r[7], r[8]),
+                      gp.is_knockout(r[2])) for r in rows if r[15])
+        print(f"  Marcador 'golpredictor': {opt_pts} pts "
+              f"({opt_pts / nk:.2f}/partido en {nk} partidos)  "
+              f"→ {delta:+d} pts vs modal")
+    else:
+        print("  (aún sin partidos resueltos con marcador óptimo guardado)")
 
 
 def cmd_panel(args):

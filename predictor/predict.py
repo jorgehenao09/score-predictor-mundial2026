@@ -10,7 +10,7 @@ from datetime import date
 
 import numpy as np
 
-from . import calibration, learning, market, store, weather
+from . import calibration, golpredictor, learning, market, store, weather
 from .venues import HIGH_ALTITUDE_M, VENUES, altitude
 
 MAX_GOALS = 10
@@ -22,6 +22,17 @@ ALTITUDE_ACCLIMATED = {"Mexico", "Bolivia", "Ecuador", "Colombia", "Peru"}
 REST_PENALTY_PER_DAY = 0.03   # 3% de goles esperados por día de déficit
 REST_PENALTY_CAP = 0.09
 ALTITUDE_PENALTY = 0.07       # 7% para no aclimatados por encima de 1500 m
+
+# Corrección de volumen de goles. El modelo corre ~12% por debajo del mercado
+# en goles esperados (verificado: el mercado esperó más en 7/9 de la fase de
+# grupos). HALLAZGO HONESTO del backtest WC2018/2022
+# (scripts/validate_improvements.py): el uplift es NEUTRO en puntos
+# golpredictor (551→537 a lo largo del rango, dentro del ruido en 128
+# partidos). Se deja en 1.10 porque mejora la tasa de marcador EXACTO
+# (9.4%→12.5%), el RPS y el realismo de los marcadores mostrados, sin costar
+# puntos. La mejora real de puntos viene del marcador óptimo-EV, no de aquí.
+# Override: env PREDICTOR_GOAL_UPLIFT (1.00 lo desactiva).
+GOAL_UPLIFT = float(os.getenv("PREDICTOR_GOAL_UPLIFT", "1.10"))
 
 
 def _poisson_vec(lam, n=MAX_GOALS):
@@ -210,7 +221,9 @@ def predict_match(con, fit, fixture):
         factors.append(f"Forma últimos 5: {home} [{fh}] · {away} [{fa}] "
                        "(ya ponderada en el modelo por recencia y rival)")
 
-    # --- matriz del modelo (con calibración empírica de marcadores)
+    # --- matriz del modelo (corrección de volumen + calibración empírica)
+    lh *= GOAL_UPLIFT
+    la *= GOAL_UPLIFT
     M_model = calibration.apply(score_matrix(lh, la, fit["rho"]))
     mp = {"h": float(np.tril(M_model, -1).sum()),
           "d": float(np.trace(M_model)),
@@ -257,6 +270,17 @@ def predict_match(con, fit, fixture):
     top = flat[:5]
     (ti, tj), tp = top[0]
 
+    # --- marcador óptimo para golpredictor (maximiza puntos esperados; suele
+    #     diferir del modal porque equilibra resultado + goles + diferencia)
+    knockout = golpredictor.is_knockout(mdate)
+    (gi, gj), gp_ev = golpredictor.ev_optimal_score(M, knockout=knockout)
+    gp_score = f"{gi}-{gj}"
+    gp_prob = float(M[gi, gj])
+    if gp_score != f"{ti}-{tj}":
+        factors.append(
+            f"Óptimo golpredictor: {gp_score} (maximiza puntos esperados, "
+            f"{gp_ev:.1f} pts esp.) — distinto del más probable {ti}-{tj}")
+
     # --- confianza (el acuerdo modelo-puro vs mercado informa fiabilidad)
     max_p = max(p_home, p_draw, p_away)
     sparse = min(eh, ea) < 10
@@ -285,6 +309,8 @@ def predict_match(con, fit, fixture):
         "model_p_away": mp["a"],
         "top_score": f"{ti}-{tj}", "top_score_prob": float(tp),
         "top_scores": [(f"{i}-{j}", float(p)) for (i, j), p in top],
+        "gp_score": gp_score, "gp_score_prob": gp_prob, "gp_ev": float(gp_ev),
+        "knockout": knockout,
         "confidence": conf,
         "explanation": " | ".join(factors),
         "factors": factors,

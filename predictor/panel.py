@@ -25,6 +25,7 @@ h1 { font-size: 22px; margin-bottom: 4px; }
 .teams { font-size: 17px; font-weight: 600; }
 .meta { color: #8b949e; font-size: 12px; }
 .score { font-size: 26px; font-weight: 700; color: #58a6ff; margin: 8px 0 2px; }
+.gp { font-size: 15px; color: #3fb950; margin: 2px 0 4px; }
 .alts { color: #8b949e; font-size: 12px; margin-bottom: 10px; }
 .bars { display: grid; grid-template-columns: 110px 1fr 52px; gap: 4px 10px;
         align-items: center; font-size: 13px; margin-bottom: 4px; }
@@ -75,6 +76,8 @@ def _card(pred):
   </div>
   <div class="score">{pred['top_score']} <span class="meta">({pred['top_score_prob']:.1%})</span>
     <span class="conf {pred['confidence']}">{pred['confidence']}</span></div>
+  <div class="gp">🎯 golpredictor: <b>{pred.get('gp_score', pred['top_score'])}</b>
+    <span class="meta">({pred.get('gp_ev', 0):.1f} pts esp.)</span></div>
   <div class="alts">Alternativas: {alts}</div>
   {_bar('h', h, pred['p_home'], pred.get('market_p_home'))}
   {_bar('d', 'Empate', pred['p_draw'], pred.get('market_p_draw'))}

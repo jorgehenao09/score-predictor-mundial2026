@@ -130,9 +130,15 @@ def build_message(tipo, pred, fx, ko, lineups, prev_marker, bajas=None):
         lines += _fmt_bajas(pred, bajas)
         lines.append("")
     alts = " · ".join(f"{s} ({p:.1%})" for s, p in pred["top_scores"][1:4])
-    lines.append(f"🎯 Marcador más probable: <b>{pred['top_score']}</b> "
-                 f"({pred['top_score_prob']:.1%})")
-    lines.append(f"   Alternativas: {alts}")
+    gp_s = pred.get("gp_score", pred["top_score"])
+    rnd = "×2 elim." if pred.get("knockout") else "grupos"
+    lines.append(f"🏆 <b>PARA GOLPREDICTOR: {gp_s}</b> "
+                 f"({pred.get('gp_ev', 0):.1f} pts esp., {rnd})")
+    extra = ("" if gp_s == pred["top_score"]
+             else " (maximiza puntos; equilibra resultado+goles+diferencia)")
+    lines.append(f"🎯 Más probable: {pred['top_score']} "
+                 f"({pred['top_score_prob']:.1%}){extra}")
+    lines.append(f"   Otros: {alts}")
     lines.append(f"📊 1X2: {h} {pred['p_home']:.0%} · Empate "
                  f"{pred['p_draw']:.0%} · {a} {pred['p_away']:.0%}")
     lines.append(f"   Goles esperados: {pred['exp_home']:.2f} – "
@@ -141,7 +147,7 @@ def build_message(tipo, pred, fx, ko, lineups, prev_marker, bajas=None):
     lines += _market_block(pred, prev_marker if tipo == "cierre" else None)
     if tipo == "previa":
         lines.append("")
-        lines.append("💡 Registra ya este marcador en golpredictor; con el "
+        lines.append(f"💡 Registra ya <b>{gp_s}</b> en golpredictor; con el "
                      "informe de cierre (al salir las alineaciones) lo ajustas "
                      "si hace falta.")
         lines.append("")
@@ -208,6 +214,7 @@ def main():
                    "date": fx["date"], "home_c": h, "away_c": a,
                    "p_home": pred["p_home"], "p_draw": pred["p_draw"],
                    "p_away": pred["p_away"], "top_score": pred["top_score"],
+                   "gp_score": pred.get("gp_score"),
                    "lineups_source": (lineups or {}).get("source"),
                    "model": {"ph": pred["model_p_home"],
                              "pd": pred["model_p_draw"],

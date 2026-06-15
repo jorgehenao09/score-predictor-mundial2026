@@ -45,6 +45,7 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
 | `predict.py` | Matriz de goles 0-10 con tau DC → marcador exacto + 1X2 + confianza + factores en español. Ajustes de contexto: altitud (≥1500 m, -7% no aclimatados), descanso (-3%/día de déficit, tope 9%), ventaja local vía flag `neutral` del dataset |
 | `cli.py` | Comandos; auto-sync ligero (respeta TTLs) y auto-refit si llegaron resultados nuevos |
 | `panel.py` | Panel HTML estático (`data/panel.html`): tarjetas con marcador, barras 1X2 modelo-vs-mercado, factores. Sin servidor |
+| `golpredictor.py` | Puntaje exacto de golpredictor + marcador óptimo-EV (maximiza puntos esperados). El cambio de mayor impacto medido (+17% OOS) |
 
 ## Decisiones de modelado y por qué
 
@@ -86,6 +87,25 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
   `venues.py`; hora del kickoff desde football-data (martj42 no trae horas) o
   pasada por el notificador. Penalización: ≥32°C −3%, ≥35°C −5% a ambos;
   nota informativa desde 28°C. `predictor/weather.py`.
+- **Optimización para golpredictor (2026-06-15, el cambio de mayor impacto)**:
+  tras analizar 12 partidos reales (`scripts/analyze_performance.py`) se vio
+  que reportábamos el marcador MODAL (argmax de la matriz), que NO es el que
+  más puntos da en golpredictor (5 resultado / 2 goles local / 2 goles visita
+  / 1 diferencia, ×2 en eliminatorias; componentes aditivos e independientes,
+  verificado). `predictor/golpredictor.py` calcula el marcador ÓPTIMO-EV:
+  el (i,j) que maximiza los puntos esperados vía descomposición por marginales.
+  **Validado en 128 partidos OOS (WC2018+2022): +17% de puntos vs modal**
+  (`scripts/validate_improvements.py`). Cada predicción reporta AMBOS
+  (modal "más probable" + "🎯 para golpredictor") en CLI, panel y Telegram.
+  Detección de eliminatoria por fecha (≥2026-06-28). Pendiente para
+  eliminatorias: golpredictor puntúa solo 90'+reposición (sin prórroga/penales)
+  — verificar que el resultado usado excluya la prórroga.
+- **Corrección de volumen de goles (`GOAL_UPLIFT=1.10`)**: el modelo corre
+  ~12% bajo el mercado en goles. HALLAZGO HONESTO del backtest: el uplift es
+  NEUTRO en puntos golpredictor (dentro del ruido en 128 partidos) — mi
+  hipótesis de que subiría puntos era FALSA. Se deja en 1.10 solo porque mejora
+  la tasa de marcador exacto (9.4%→12.5%), el RPS y el realismo, sin costar
+  puntos. La mejora de puntos viene del óptimo-EV, no de aquí. Env override.
 
 ## Fuentes gratuitas (verificadas el 2026-06-09)
 

@@ -71,6 +71,11 @@ def connect() -> sqlite3.Connection:
             con.execute(f"ALTER TABLE predictions ADD COLUMN {col} REAL")
         except sqlite3.OperationalError:
             pass  # ya existe
+    for col in ("gp_score",):
+        try:
+            con.execute(f"ALTER TABLE predictions ADD COLUMN {col} TEXT")
+        except sqlite3.OperationalError:
+            pass
     return con
 
 
@@ -209,14 +214,15 @@ def save_prediction(con, p: dict) -> int:
            exp_home, exp_away, p_home, p_draw, p_away, top_score,
            top_score_prob, confidence, explanation,
            market_p_home, market_p_draw, market_p_away, data_version,
-           model_p_home, model_p_draw, model_p_away)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           model_p_home, model_p_draw, model_p_away, gp_score)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (now_iso(), p["match_date"], p["home"], p["away"], p.get("city", ""),
          p["exp_home"], p["exp_away"], p["p_home"], p["p_draw"], p["p_away"],
          p["top_score"], p["top_score_prob"], p["confidence"],
          p["explanation"], p.get("market_p_home"), p.get("market_p_draw"),
          p.get("market_p_away"), json.dumps(p.get("data_version", {})),
-         p.get("model_p_home"), p.get("model_p_draw"), p.get("model_p_away")))
+         p.get("model_p_home"), p.get("model_p_draw"), p.get("model_p_away"),
+         p.get("gp_score")))
     con.commit()
     return cur.lastrowid
 
