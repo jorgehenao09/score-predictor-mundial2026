@@ -27,12 +27,29 @@ ALTITUDE_PENALTY = 0.07       # 7% para no aclimatados por encima de 1500 m
 # en goles esperados (verificado: el mercado esperó más en 7/9 de la fase de
 # grupos). HALLAZGO HONESTO del backtest WC2018/2022
 # (scripts/validate_improvements.py): el uplift es NEUTRO en puntos
-# golpredictor (551→537 a lo largo del rango, dentro del ruido en 128
-# partidos). Se deja en 1.10 porque mejora la tasa de marcador EXACTO
-# (9.4%→12.5%), el RPS y el realismo de los marcadores mostrados, sin costar
-# puntos. La mejora real de puntos viene del marcador óptimo-EV, no de aquí.
-# Override: env PREDICTOR_GOAL_UPLIFT (1.00 lo desactiva).
-GOAL_UPLIFT = float(os.getenv("PREDICTOR_GOAL_UPLIFT", "1.10"))
+# golpredictor (dentro del ruido en 128 partidos) — mejora la tasa de marcador
+# EXACTO (9.4%→12.5%), el RPS y el realismo, sin costar puntos.
+# Valor DINÁMICO: lo auto-ajusta a diario `autocalibrate.py` dentro de la banda
+# validada [1.05,1.15] y lo persiste en data/tuned_params.json (committeado;
+# la BD es efímera en CI). Prioridad: env > archivo > default.
+GOAL_UPLIFT_DEFAULT = 1.10
+GOAL_UPLIFT_BAND = (1.05, 1.15)
+TUNED_PARAMS_PATH = os.path.join(store.BASE_DIR, "data", "tuned_params.json")
+
+
+def goal_uplift() -> float:
+    env = os.getenv("PREDICTOR_GOAL_UPLIFT")
+    if env:
+        try:
+            return float(env)
+        except ValueError:
+            pass
+    try:
+        import json as _json
+        with open(TUNED_PARAMS_PATH, encoding="utf-8") as f:
+            return float(_json.load(f)["goal_uplift"])
+    except Exception:
+        return GOAL_UPLIFT_DEFAULT
 
 
 def _poisson_vec(lam, n=MAX_GOALS):
@@ -222,8 +239,9 @@ def predict_match(con, fit, fixture):
                        "(ya ponderada en el modelo por recencia y rival)")
 
     # --- matriz del modelo (corrección de volumen + calibración empírica)
-    lh *= GOAL_UPLIFT
-    la *= GOAL_UPLIFT
+    uplift = goal_uplift()
+    lh *= uplift
+    la *= uplift
     M_model = calibration.apply(score_matrix(lh, la, fit["rho"]))
     mp = {"h": float(np.tril(M_model, -1).sum()),
           "d": float(np.trace(M_model)),

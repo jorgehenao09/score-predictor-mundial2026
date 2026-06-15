@@ -35,6 +35,10 @@ jobs:
             echo "Ya hay una cadena viva ($vivos); me apago."
             exit 0
           fi
+          # auditoría diaria: el date-guard del propio workflow la limita a 1/día
+          gh workflow run autocalibrate.yml -R "$REPO" && \
+            echo "autocalibrate.yml disparado (guard diario lo limita a 1/día)" || \
+            echo "no pude disparar autocalibrate (sigo)"
           for i in 1 2 3 4 5 6; do
             h=$(date -u +%H)
             # horario de partidos: previas desde ~11:00 UTC, cierres hasta ~04:00

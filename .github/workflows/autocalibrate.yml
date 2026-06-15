@@ -1,0 +1,77 @@
+name: Autocalibración diaria
+
+# Recalibración diaria de parámetros estructurales (GOAL_UPLIFT) dentro de la
+# banda validada [1.05,1.15]; avisa por Telegram si la evidencia apunta fuera
+# de la banda o si el rendimiento en vivo se desvía. Lo de alta señal (ratings,
+# peso de mezcla) ya se auto-ajusta en cada predicción; esto vigila lo demás.
+# Se dispara desde el marcapasos (workflow_dispatch) y por cron de respaldo;
+# un marcador de fecha committeado garantiza UNA corrida por día UTC.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 11 * * *"   # respaldo best-effort, antes de los partidos
+
+concurrency:
+  group: autocalibrate
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # ¿Ya corrió hoy? (marcador committeado en data/notified/)
+      - name: Guardia diaria
+        id: guard
+        run: |
+          DAY=$(date -u +%Y-%m-%d)
+          echo "day=$DAY" >> "$GITHUB_OUTPUT"
+          if [ -f "data/notified/.audit_$DAY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Ya se auditó hoy ($DAY); salgo."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v6
+        if: steps.guard.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        if: steps.guard.outputs.run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Auditar y recalibrar (auto-aplica en banda, avisa fuera)
+        if: steps.guard.outputs.run == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+          BSD_TOKEN: ${{ secrets.BSD_TOKEN }}
+        run: python -m predictor autocalibrar --telegram
+
+      - name: Persistir parámetros y marcador del día
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          touch "data/notified/.audit_${{ steps.guard.outputs.day }}"
+          git add data/tuned_params.json data/notified || true
+          if ! git diff --cached --quiet; then
+            git commit -m "autocalibración ${{ steps.guard.outputs.day }}"
+            for i in 1 2 3; do
+              git push && break
+              git pull --rebase
+            done
+          fi

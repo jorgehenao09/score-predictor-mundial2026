@@ -107,6 +107,27 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
   la tasa de marcador exacto (9.4%→12.5%), el RPS y el realismo, sin costar
   puntos. La mejora de puntos viene del óptimo-EV, no de aquí. Env override.
 
+## Gobernanza de calibración (qué se auto-ajusta y qué no, 2026-06-15)
+
+Principio: **auto-ajustar lo de alta señal por partido; vigilar-y-avisar (no
+auto-tocar) lo que se sobreajustaría.** Auto-tunear estructurales a diario con
+~100 partidos de un solo Mundial perseguiría ruido y empeoraría el sistema.
+
+| Qué | Cómo | Cadencia |
+|---|---|---|
+| Ratings ataque/defensa | reajuste completo Dixon-Coles | cada resultado (`ensure_fit`) |
+| Peso mezcla modelo↔mercado | `learning.py`, minimiza RPS con shrinkage hacia 0.5 | cada predicción; ya se movió a 0.25 |
+| Marcador óptimo-EV | óptimo por construcción para la matriz vigente | no necesita recalibración |
+| `GOAL_UPLIFT` (estructural) | `autocalibrate.py`: sweep OOS de puntos golpredictor sobre TODO el histórico (WC2018+2022+2026); **auto-aplica solo dentro de la banda validada [1.05,1.15]**, alerta si la evidencia sale de la banda | diaria (`autocalibrate.yml`, guard de fecha → 1/día; disparado por el marcapasos) |
+| `xi`, `rho`, penalizaciones | fijos, validados multi-mundial | solo cambio manual tras backtest |
+
+- Valor vigente del uplift en `data/tuned_params.json` (committeado; la BD es
+  efímera en CI). Prioridad de lectura: env `PREDICTOR_GOAL_UPLIFT` > archivo >
+  default 1.10. Comando manual: `python -m predictor autocalibrar [--telegram]
+  [--solo-revisar]`.
+- La auditoría diaria solo escribe a Telegram si hubo cambio o alerta (sin
+  spam). Marcador de fecha `data/notified/.audit_YYYY-MM-DD` evita doble corrida.
+
 ## Fuentes gratuitas (verificadas el 2026-06-09)
 
 | Fuente | Datos | Límite real | Clave | Rol |

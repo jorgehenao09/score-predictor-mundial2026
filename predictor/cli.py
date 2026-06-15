@@ -402,6 +402,17 @@ def cmd_refit(args):
           f"(xi={fit['xi']}, rho={fit['rho']:.4f}, ha={fit['ha']:.3f})")
 
 
+def cmd_autocalibrar(args):
+    from . import autocalibrate
+    con = store.connect()
+    report = autocalibrate.run_audit(con, apply=not args.solo_revisar)
+    print(autocalibrate.format_report(report))
+    if args.telegram:
+        msg = autocalibrate.telegram_message(report)
+        if msg and autocalibrate.send_telegram(msg):
+            print("  (enviado a Telegram)")
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="predictor",
@@ -444,6 +455,14 @@ def main():
     p = sub.add_parser("refit", help="fuerza reajuste del modelo")
     p.add_argument("--xi", type=float, default=None)
     p.set_defaults(fn=cmd_refit)
+
+    p = sub.add_parser("autocalibrar",
+                       help="auditoría/recalibración de parámetros estructurales")
+    p.add_argument("--solo-revisar", action="store_true",
+                   help="no aplica cambios, solo reporta")
+    p.add_argument("--telegram", action="store_true",
+                   help="avisa por Telegram si hubo cambio o alerta")
+    p.set_defaults(fn=cmd_autocalibrar)
 
     args = ap.parse_args()
     args.fn(args)
