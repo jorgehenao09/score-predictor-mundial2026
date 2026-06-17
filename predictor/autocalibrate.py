@@ -53,9 +53,10 @@ def _oos_sets(con):
     return out
 
 
-def _points_for_uplift(oos, up):
-    """Puntos golpredictor (marcador óptimo-EV) y RPS para un uplift dado."""
-    pts, rpss, n = 0, [], 0
+def _per_match_points(oos, up):
+    """Lista de puntos golpredictor (óptimo-EV) por partido, y RPS por partido,
+    para un uplift dado. Permite comparaciones PAREADAS (mismo partido)."""
+    pts, rpss = [], []
     for fit, test in oos:
         rho = fit["rho"]
         R = fit["ratings"]
@@ -66,13 +67,22 @@ def _points_for_uplift(oos, up):
             la = np.exp(fit["mu"] + aa - dh) * up
             M = score_matrix(lh, la, rho)
             evs, _ = gp.ev_optimal_score(M)
-            pts += gp.points(evs, (hs, as_))
+            pts.append(gp.points(evs, (hs, as_)))
             probs = (float(np.tril(M, -1).sum()), float(np.trace(M)),
                      float(np.triu(M, 1).sum()))
             o = 0 if hs > as_ else (1 if hs == as_ else 2)
             rpss.append(rps(probs, o))
-            n += 1
-    return pts, (float(np.mean(rpss)) if rpss else 0.0), n
+    return np.array(pts, dtype=float), float(np.mean(rpss)) if rpss else 0.0
+
+
+def _paired_t(a, b):
+    """t pareada de (a-b); |t|>~2 ≈ diferencia significativa. 0 si sin varianza."""
+    d = a - b
+    n = len(d)
+    sd = d.std(ddof=1) if n > 1 else 0.0
+    if sd == 0:
+        return 0.0
+    return float(d.mean() / (sd / np.sqrt(n)))
 
 
 def _live_check(con):
@@ -86,66 +96,77 @@ def _live_check(con):
              AND p.id IN (SELECT MAX(id) FROM predictions
                           WHERE substr(created_at,1,10)<=match_date
                           GROUP BY home,away,match_date)""").fetchall()
-    modal_pts = opt_pts = n_opt = 0
+    modal_all = 0           # puntos modal sobre TODO lo resuelto (lo ganado)
+    pair_modal = opt_pts = n_opt = 0   # comparación PAREADA (mismas partidos)
     rpss = []
     for ph, pd_, pa, ts, gps, hs, as_, d in rows:
         ko = gp.is_knockout(d)
-        modal_pts += gp.points(tuple(map(int, ts.split("-"))), (hs, as_), ko)
+        mp = gp.points(tuple(map(int, ts.split("-"))), (hs, as_), ko)
+        modal_all += mp
         if gps:
+            pair_modal += mp
             opt_pts += gp.points(tuple(map(int, gps.split("-"))), (hs, as_), ko)
             n_opt += 1
         o = 0 if hs > as_ else (1 if hs == as_ else 2)
         rpss.append(rps((ph, pd_, pa), o))
-    return {"n": len(rows), "modal_pts": modal_pts, "opt_pts": opt_pts,
-            "n_opt": n_opt, "rps": float(np.mean(rpss)) if rpss else None}
+    return {"n": len(rows), "modal_pts": modal_all, "pair_modal": pair_modal,
+            "opt_pts": opt_pts, "n_opt": n_opt,
+            "rps": float(np.mean(rpss)) if rpss else None}
 
 
 def run_audit(con, apply=True):
     sources.sync_results(con)
     oos = _oos_sets(con)
-    scored = {up: _points_for_uplift(oos, up) for up in GRID}
-    n_oos = next(iter(scored.values()))[2]
+    per_match = {up: _per_match_points(oos, up) for up in GRID}
+    scored = {up: float(arr.sum()) for up, (arr, _) in per_match.items()}
+    n_oos = len(next(iter(per_match.values()))[0])
 
     in_band = [u for u in GRID if GOAL_UPLIFT_BAND[0] <= u <= GOAL_UPLIFT_BAND[1]]
-    best_band = max(in_band, key=lambda u: scored[u][0])
-    best_any = max(GRID, key=lambda u: scored[u][0])
+    best_band = max(in_band, key=lambda u: scored[u])
+    best_any = max(GRID, key=lambda u: scored[u])
     current = goal_uplift()
-    cur_pts = scored.get(round(current, 2), (scored[best_band][0],))[0]
+    cur_pts = scored.get(round(current, 2), scored[best_band])
 
     report = {
         "n_oos": n_oos, "current_uplift": current,
-        "best_in_band": best_band, "best_in_band_pts": scored[best_band][0],
-        "best_any": best_any, "best_any_pts": scored[best_any][0],
-        "grid": {u: scored[u][0] for u in GRID},
+        "best_in_band": best_band, "best_in_band_pts": scored[best_band],
+        "best_any": best_any, "best_any_pts": scored[best_any],
+        "grid": {u: scored[u] for u in GRID},
         "live": _live_check(con),
         "blend_w": learning.current_blend(con),
         "applied": None, "alerts": [],
     }
 
     # auto-aplicar dentro de banda si mejora de forma no trivial
-    gain = (scored[best_band][0] - cur_pts) / max(cur_pts, 1)
+    gain = (scored[best_band] - cur_pts) / max(cur_pts, 1)
     if apply and abs(best_band - current) > 1e-9 and gain >= MIN_GAIN:
         _write_uplift(best_band, report)
         report["applied"] = best_band
 
-    # alerta si la evidencia apunta claramente fuera de la banda
+    # alerta fuera de banda SOLO si la ventaja es (a) material y (b)
+    # estadísticamente significativa por partido (pareada). Sin el guard de
+    # significancia la alarma suena por ruido de 1-2 partidos (banda elegida a
+    # propósito por exacto/realismo, no por puntos crudos planos).
     if best_any not in in_band:
-        adv = (scored[best_any][0] - scored[best_band][0]) / max(scored[best_band][0], 1)
-        if adv >= OUT_OF_BAND_MARGIN:
+        adv = (scored[best_any] - scored[best_band]) / max(scored[best_band], 1)
+        t = abs(_paired_t(per_match[best_any][0], per_match[best_band][0]))
+        if adv >= OUT_OF_BAND_MARGIN and t >= 2.0:
             report["alerts"].append(
-                f"El uplift óptimo OOS es {best_any} (fuera de la banda segura "
-                f"{GOAL_UPLIFT_BAND}); {adv * 100:.1f}% mejor que el mejor en "
-                f"banda. Requiere tu decisión (cambiar la banda o el modelo).")
+                f"El uplift óptimo OOS es {best_any} (fuera de la banda "
+                f"{GOAL_UPLIFT_BAND}): {adv * 100:.1f}% mejor y SIGNIFICATIVO "
+                f"(t={t:.1f}, {n_oos} partidos). Requiere tu decisión.")
 
     live = report["live"]
     if live["rps"] and live["n"] >= LIVE_MIN_N and live["rps"] > LIVE_RPS_ALERT:
         report["alerts"].append(
             f"RPS en vivo {live['rps']:.3f} sobre {live['n']} partidos, peor de "
             f"lo esperado (~0.21). Revisar si el modelo se está desviando.")
-    if live["n_opt"] and live["opt_pts"] < live["modal_pts"]:
+    if (live["n_opt"] >= LIVE_MIN_N
+            and live["opt_pts"] < 0.9 * live["modal_pts"]):
         report["alerts"].append(
-            f"En vivo el marcador óptimo-EV ({live['opt_pts']} pts) va por "
-            f"debajo del modal ({live['modal_pts']}); vigilar (muestra chica).")
+            f"En vivo el óptimo-EV ({live['opt_pts']} pts) va >10% bajo el modal "
+            f"({live['modal_pts']}) en {live['n_opt']} partidos; revisar la "
+            f"estrategia de marcador.")
 
     return report
 
@@ -174,8 +195,9 @@ def format_report(r) -> str:
     lines.append(f"  Peso mezcla auto-aprendido: {w} ({nlearn} partidos)")
     live = r["live"]
     if live["n_opt"]:
-        lines.append(f"  En vivo: óptimo-EV {live['opt_pts']} pts vs modal "
-                     f"{live['modal_pts']} pts ({live['n_opt']} partidos)")
+        lines.append(f"  En vivo (pareado, {live['n_opt']} partidos con óptimo "
+                     f"guardado): óptimo-EV {live['opt_pts']} vs modal "
+                     f"{live['pair_modal']} pts")
     if r["alerts"]:
         lines.append("  ⚠️ ALERTAS:")
         for a in r["alerts"]:
