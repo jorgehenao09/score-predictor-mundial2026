@@ -1,0 +1,18 @@
+{
+ "sent_at": "2026-06-18T14:03:14Z",
+ "tipo": "previa",
+ "date": "2026-06-18",
+ "home_c": "Switzerland",
+ "away_c": "Bosnia and Herzegovina",
+ "p_home": 0.5888384662778712,
+ "p_draw": 0.23961588594666391,
+ "p_away": 0.17154564777546508,
+ "top_score": "1-0",
+ "gp_score": "1-0",
+ "lineups_source": null,
+ "model": {
+  "ph": 0.5888384662778712,
+  "pd": 0.23961588594666391,
+  "pa": 0.17154564777546508
+ }
+}
