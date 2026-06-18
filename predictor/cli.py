@@ -149,6 +149,14 @@ def print_prediction(con, fit, fx, brief=False):
     if pred["gp_score"] != pred["top_score"]:
         print(f"    (maximiza tus puntos; distinto del más probable porque "
               f"equilibra resultado + goles + diferencia)")
+    c = pred.get("contrarian")
+    if c:
+        nombre = {"H": h, "D": "empate", "A": a}[c["outcome"]]
+        print(f"\n  ► 🎲 REMONTADA (si vas detrás): {c['score']} "
+              f"({c['ev']:.1f} pts esp., cuesta {c['ev_cost']:.1f} vs el 🎯)")
+        print(f"    El mercado infravalora «{nombre}»: tu modelo lo ve "
+              f"{c['edge']:+.0%} por encima. El campo va a cargar el favorito; "
+              f"esta es tu jugada de varianza para diferenciarte.")
     print(f"\n  ► 1X2:  {h} {pred['p_home']:.1%}  ·  "
           f"Empate {pred['p_draw']:.1%}  ·  {a} {pred['p_away']:.1%}")
     print(f"    Goles esperados: {pred['exp_home']:.2f} - {pred['exp_away']:.2f}")

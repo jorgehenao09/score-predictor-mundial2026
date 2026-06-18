@@ -299,6 +299,19 @@ def predict_match(con, fit, fixture):
             f"Óptimo golpredictor: {gp_score} (maximiza puntos esperados, "
             f"{gp_ev:.1f} pts esp.) — distinto del más probable {ti}-{tj}")
 
+    # --- pick "remontada" (versión ligera de estrategia de ranking): cuando vas
+    #     detrás, el valor está donde el MODELO discrepa del mercado/campo
+    contrarian = None
+    if market_part and market_part.get("market_p_home") is not None:
+        contrarian = golpredictor.contrarian_pick(
+            M,
+            (mp["h"], mp["d"], mp["a"]),
+            (market_part["market_p_home"], market_part["market_p_draw"],
+             market_part["market_p_away"]),
+            knockout=knockout)
+        if contrarian and contrarian["score"] == gp_score:
+            contrarian = None   # no aporta nada si coincide con el EV-óptimo
+
     # --- confianza (el acuerdo modelo-puro vs mercado informa fiabilidad)
     max_p = max(p_home, p_draw, p_away)
     sparse = min(eh, ea) < 10
@@ -328,6 +341,7 @@ def predict_match(con, fit, fixture):
         "top_score": f"{ti}-{tj}", "top_score_prob": float(tp),
         "top_scores": [(f"{i}-{j}", float(p)) for (i, j), p in top],
         "gp_score": gp_score, "gp_score_prob": gp_prob, "gp_ev": float(gp_ev),
+        "contrarian": contrarian,
         "knockout": knockout,
         "confidence": conf,
         "explanation": " | ".join(factors),

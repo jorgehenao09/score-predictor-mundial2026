@@ -94,6 +94,56 @@ def ev_optimal_score(M, knockout=False):
     return best, best_key[0] * (2 if knockout else 1)
 
 
+def best_score_for_outcome(M, outcome):
+    """Marcador (i,j) más probable de la matriz DENTRO de un resultado dado.
+    outcome: 'H' (gana local), 'D' (empate), 'A' (gana visita)."""
+    n = M.shape[0]
+    best, bp = None, -1.0
+    for i in range(n):
+        for j in range(n):
+            if outcome == "H" and not i > j:
+                continue
+            if outcome == "D" and i != j:
+                continue
+            if outcome == "A" and not j > i:
+                continue
+            if M[i, j] > bp:
+                bp, best = M[i, j], (i, j)
+    return best
+
+
+def contrarian_pick(M, model_probs, market_probs, knockout=False,
+                    min_edge=0.05):
+    """Pick de 'remontada' para cuando vas detrás en la polla.
+
+    El campo (los demás jugadores) sigue al mercado. El valor contrarian está
+    donde TU MODELO ve más probabilidad que el mercado en un resultado que el
+    campo infravalora. Devuelve el marcador más probable de ESE resultado, su
+    EV de puntos, la divergencia, y el costo en EV frente al pick EV-óptimo.
+
+    model_probs / market_probs: (p_local, p_empate, p_visita).
+    Devuelve None si no hay borde contrarian apreciable (juega el seguro).
+    """
+    outcomes = ("H", "D", "A")
+    edges = {o: model_probs[k] - market_probs[k] for k, o in enumerate(outcomes)}
+    best_o = max(outcomes, key=lambda o: edges[o])
+    edge = edges[best_o]
+    if edge < min_edge:
+        return None
+    score = best_score_for_outcome(M, best_o)
+    if score is None:
+        return None
+    ev = expected_points(M, score, knockout)
+    opt_ev = ev_optimal_score(M, knockout)[1]
+    return {
+        "score": f"{score[0]}-{score[1]}",
+        "outcome": best_o,
+        "edge": float(edge),
+        "ev": float(ev),
+        "ev_cost": float(opt_ev - ev),   # cuánto sacrificas vs el EV-óptimo
+    }
+
+
 if __name__ == "__main__":
     # comprobaciones de la matemática (sin framework, a pedido del usuario)
     # ejemplo oficial: pronóstico 2-0, real 3-1 → 5 (resultado) + 1 (dif) = 6
