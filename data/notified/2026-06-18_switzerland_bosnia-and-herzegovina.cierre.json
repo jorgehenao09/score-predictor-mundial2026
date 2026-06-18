@@ -1,0 +1,18 @@
+{
+ "sent_at": "2026-06-18T18:05:04Z",
+ "tipo": "cierre",
+ "date": "2026-06-18",
+ "home_c": "Switzerland",
+ "away_c": "Bosnia and Herzegovina",
+ "p_home": 0.5888384419392043,
+ "p_draw": 0.2396158976642045,
+ "p_away": 0.17154566039659114,
+ "top_score": "1-0",
+ "gp_score": "1-0",
+ "lineups_source": "FIFA",
+ "model": {
+  "ph": 0.5888384419392043,
+  "pd": 0.2396158976642045,
+  "pa": 0.17154566039659114
+ }
+}
