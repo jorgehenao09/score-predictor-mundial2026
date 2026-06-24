@@ -71,35 +71,46 @@ def score_matrix(lh, la, rho):
 def implied_lambdas(p_home, p_away, rho, p_over=None, point=2.5):
     """Resuelve las medias de gol (λh, λa) implícitas en el mercado: las que
     reproducen el 1X2 de-vigueado y, si hay mercado de totales, P(over).
-    Con solo 1X2 el sistema es exactamente determinado (2 ecuaciones/2
-    incógnitas); con totales queda sobredeterminado y se resuelve por mínimos
-    cuadrados. Devuelve (λh, λa) o None si no converge."""
+    El 1X2 es la señal PRIMARIA (exactamente determinada, 2 ecuaciones/2
+    incógnitas); el over es secundario. Si al añadir el over el sistema queda
+    sobredeterminado e inconsistente y rompe el ajuste del 1X2, se cae de vuelta
+    a solo-1X2 en lugar de descartar el mercado entero. Devuelve (λh, λa) o
+    None si ni siquiera el 1X2 converge."""
     from scipy.optimize import minimize as _minimize
-
-    def loss(x):
-        lh, la = np.exp(x)
-        M = score_matrix(lh, la, rho)
-        ph = float(np.tril(M, -1).sum())
-        pa = float(np.triu(M, 1).sum())
-        err = (ph - p_home) ** 2 + (pa - p_away) ** 2
-        if p_over is not None:
-            tot = np.add.outer(np.arange(MAX_GOALS + 1),
-                               np.arange(MAX_GOALS + 1))
-            pov = float(M[tot > point].sum())
-            err += (pov - p_over) ** 2
-        return err
 
     # inicialización: total ~2.6 goles repartidos según el sesgo del 1X2
     skew = np.clip(p_home - p_away, -0.6, 0.6)
     x0 = np.log([1.3 * (1 + skew), max(1.3 * (1 - skew), 0.2)])
-    res = _minimize(loss, x0, method="Nelder-Mead",
-                    options={"xatol": 1e-4, "fatol": 1e-10, "maxiter": 400})
-    if not res.success or res.fun > 1e-4:
+
+    def solve(use_over):
+        def loss(x):
+            lh, la = np.exp(x)
+            M = score_matrix(lh, la, rho)
+            ph = float(np.tril(M, -1).sum())
+            pa = float(np.triu(M, 1).sum())
+            err = (ph - p_home) ** 2 + (pa - p_away) ** 2
+            if use_over:
+                tot = np.add.outer(np.arange(MAX_GOALS + 1),
+                                   np.arange(MAX_GOALS + 1))
+                err += (float(M[tot > point].sum()) - p_over) ** 2
+            return err
+
+        res = _minimize(loss, x0, method="Nelder-Mead",
+                        options={"xatol": 1e-4, "fatol": 1e-10, "maxiter": 400})
+        lh, la = np.exp(res.x)
+        # aceptación: el 1X2 debe quedar clavado (el over es best-effort)
+        M = score_matrix(lh, la, rho)
+        e_1x2 = ((float(np.tril(M, -1).sum()) - p_home) ** 2
+                 + (float(np.triu(M, 1).sum()) - p_away) ** 2)
+        if res.success and e_1x2 < 1e-4 and 0.05 < lh < 6 and 0.05 < la < 6:
+            return float(lh), float(la)
         return None
-    lh, la = np.exp(res.x)
-    if not (0.05 < lh < 6 and 0.05 < la < 6):
-        return None
-    return float(lh), float(la)
+
+    if p_over is not None:
+        r = solve(True)
+        if r is not None:
+            return r
+    return solve(False)
 
 
 def market_matrix(con, home, away, rho):

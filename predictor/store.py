@@ -150,35 +150,43 @@ def save_odds_totals(con, source: str, entries):
 
 
 def latest_totals(con, home: str, away: str):
-    """Último snapshot de over/under por bookmaker (línea principal)."""
-    return con.execute(
-        """SELECT bookmaker, point, over_odds, under_odds, fetched_at
-           FROM odds_totals WHERE home=? AND away=?
-           AND fetched_at = (SELECT MAX(fetched_at) FROM odds_totals
-                             WHERE home=? AND away=?)""",
-        (home, away, home, away)).fetchall()
+    """Último snapshot de over/under por bookmaker (línea principal).
+    Over/under son sobre el total de goles → no dependen de la orientación;
+    si la fuente guardó el partido invertido, igual sirve."""
+    sql = ("""SELECT bookmaker, point, over_odds, under_odds, fetched_at
+              FROM odds_totals WHERE home=? AND away=?
+              AND fetched_at = (SELECT MAX(fetched_at) FROM odds_totals
+                                WHERE home=? AND away=?)""")
+    rows = con.execute(sql, (home, away, home, away)).fetchall()
+    return rows or con.execute(sql, (away, home, away, home)).fetchall()
 
 
 def latest_odds(con, home: str, away: str):
     """Último snapshot de cuotas 1X2 por bookmaker para un partido."""
-    rows = con.execute(
-        """SELECT bookmaker, home_odds, draw_odds, away_odds, fetched_at
-           FROM odds_snapshots WHERE home=? AND away=?
-           AND fetched_at = (SELECT MAX(fetched_at) FROM odds_snapshots
-                             WHERE home=? AND away=?)""",
-        (home, away, home, away)).fetchall()
-    return rows
+    return _odds_both_orientations(con, "MAX", home, away)
 
 
 def first_odds(con, home: str, away: str):
     """Primer snapshot (nuestra 'línea de apertura' casera)."""
-    rows = con.execute(
-        """SELECT bookmaker, home_odds, draw_odds, away_odds, fetched_at
-           FROM odds_snapshots WHERE home=? AND away=?
-           AND fetched_at = (SELECT MIN(fetched_at) FROM odds_snapshots
-                             WHERE home=? AND away=?)""",
-        (home, away, home, away)).fetchall()
-    return rows
+    return _odds_both_orientations(con, "MIN", home, away)
+
+
+def _odds_both_orientations(con, agg: str, home: str, away: str):
+    """Cuotas 1X2 tolerando que la fuente guarde el partido con la orientación
+    local/visitante invertida (p.ej. The Odds API lista 'Switzerland vs Canada'
+    cuando martj42 tiene 'Canada vs Switzerland' por ser Canadá anfitrión). Si
+    solo hay datos en (away, home), se devuelven con las cuotas local↔visita ya
+    intercambiadas (el empate no cambia). agg = 'MAX' (cierre) o 'MIN' (apertura)."""
+    sql = (f"""SELECT bookmaker, home_odds, draw_odds, away_odds, fetched_at
+               FROM odds_snapshots WHERE home=? AND away=?
+               AND fetched_at = (SELECT {agg}(fetched_at) FROM odds_snapshots
+                                 WHERE home=? AND away=?)""")
+    rows = con.execute(sql, (home, away, home, away)).fetchall()
+    if rows:
+        return rows
+    rev = con.execute(sql, (away, home, away, home)).fetchall()
+    # orientación invertida: la 'home_odds' guardada es de nuestro visitante
+    return [(bk, ao, do, ho, ts) for bk, ho, do, ao, ts in rev]
 
 
 def save_fit(con, xi, rho, home_adv, mu, n_matches, train_until, ratings):
