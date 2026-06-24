@@ -11,7 +11,7 @@ from datetime import date
 import numpy as np
 
 from . import calibration, golpredictor, learning, market, store, weather
-from .venues import HIGH_ALTITUDE_M, VENUES, altitude
+from .venues import HIGH_ALTITUDE_M, VENUES, altitude, host_side
 
 MAX_GOALS = 10
 
@@ -188,15 +188,27 @@ def predict_match(con, fit, fixture):
     aa, da, ea = R.get(away, (0.0, 0.0, 0.0))
 
     factors = []
-    lh = np.exp(fit["mu"] + ah - da + fit["ha"] * (0 if neutral else 1))
-    la = np.exp(fit["mu"] + aa - dh)
+    # Localía POR SEDE (no por la localía nominal del calendario): el host real
+    # —quien juega en su país— recibe la ventaja, aunque figure como visitante.
+    # Si la sede no está registrada (otras competiciones), se usa el flag del
+    # dataset. Sin anfitriones quemados.
+    side = host_side(home, away, city)
+    if side is None:
+        side = "home" if not neutral else "neutral"
+    ha_home = fit["ha"] if side == "home" else 0.0
+    ha_away = fit["ha"] if side == "away" else 0.0
+    lh = np.exp(fit["mu"] + ah - da + ha_home)
+    la = np.exp(fit["mu"] + aa - dh + ha_away)
     factors.append(
         f"Fuerza (Dixon-Coles): {home} ataque {ah:+.2f} / defensa {dh:+.2f} · "
         f"{away} ataque {aa:+.2f} / defensa {da:+.2f}")
-    if not neutral:
-        local = home if fixture.get("country", "") != "" else home
-        factors.append(f"Ventaja de local aplicada a {local} "
-                       f"(+{(np.exp(fit['ha']) - 1) * 100:.0f}% goles esperados)")
+    pct = (np.exp(fit["ha"]) - 1) * 100
+    if side == "home":
+        factors.append(f"Ventaja de local aplicada a {home} (juega en casa, "
+                       f"+{pct:.0f}% goles esperados)")
+    elif side == "away":
+        factors.append(f"Ventaja de local aplicada a {away} (juega en casa pese "
+                       f"a figurar de visita, +{pct:.0f}% goles esperados)")
     else:
         factors.append("Cancha neutral: sin ventaja de local")
 

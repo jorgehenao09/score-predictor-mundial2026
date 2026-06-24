@@ -35,3 +35,24 @@ def altitude(city: str) -> int:
 
 def venue_info(city: str):
     return VENUES.get(city)
+
+
+def host_side(home: str, away: str, city: str):
+    """Quién juega de local DE VERDAD, decidido por la SEDE — no por la localía
+    nominal del calendario. El equipo cuyo país sea el de la sede recibe la
+    ventaja (p.ej. Suiza figura 'local' vs Canadá, pero si se juega en Vancouver
+    el local real es Canadá). General y sin anfitriones quemados: se deduce del
+    país de la sede en VENUES, así sirve para cualquier competición que registre
+    sus sedes aquí.
+
+    Devuelve 'home', 'away', 'neutral' (sede conocida, ninguno es local) o None
+    (sede desconocida → el llamador usa el flag 'neutral' del dataset)."""
+    v = VENUES.get(city)
+    if not v:
+        return None
+    country = v[1]
+    if country == home:
+        return "home"
+    if country == away:
+        return "away"
+    return "neutral"

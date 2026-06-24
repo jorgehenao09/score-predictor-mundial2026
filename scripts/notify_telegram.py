@@ -39,14 +39,22 @@ GOLPREDICTOR_LOCK_MIN = 10  # verificado: golpredictor.com bloquea a T-10
 def find_fixture_row(con, h, a, ko):
     d0 = (ko - timedelta(days=1)).strftime("%Y-%m-%d")
     d1 = (ko + timedelta(days=1)).strftime("%Y-%m-%d")
-    row = con.execute(
-        """SELECT date, home, away, city, country, neutral FROM matches
-           WHERE home=? AND away=? AND date BETWEEN ? AND ?
-           AND home_score IS NULL""", (h, a, d0, d1)).fetchone()
-    if not row:
-        return {"date": ko.strftime("%Y-%m-%d"), "home": h, "away": a,
-                "city": "", "country": "", "neutral": 1}
-    return dict(zip(["date", "home", "away", "city", "country", "neutral"], row))
+    sql = ("""SELECT date, home, away, city, country, neutral FROM matches
+              WHERE home=? AND away=? AND date BETWEEN ? AND ?
+              AND home_score IS NULL""")
+    row = con.execute(sql, (h, a, d0, d1)).fetchone()
+    if row:
+        return dict(zip(["date", "home", "away", "city", "country",
+                         "neutral"], row))
+    # La fuente del calendario puede invertir local/visita respecto a martj42.
+    # Buscamos la orientación inversa para recuperar la SEDE real (la localía la
+    # decide la sede en predict_match, así que conservar h/a no afecta).
+    rev = con.execute(sql, (a, h, d0, d1)).fetchone()
+    if rev:
+        return {"date": rev[0], "home": h, "away": a,
+                "city": rev[3], "country": rev[4], "neutral": rev[5]}
+    return {"date": ko.strftime("%Y-%m-%d"), "home": h, "away": a,
+            "city": "", "country": "", "neutral": 1}
 
 
 def _fmt_when(ko):
