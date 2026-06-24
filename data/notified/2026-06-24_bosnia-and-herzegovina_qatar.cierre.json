@@ -1,0 +1,18 @@
+{
+ "sent_at": "2026-06-24T18:05:23Z",
+ "tipo": "cierre",
+ "date": "2026-06-24",
+ "home_c": "Bosnia and Herzegovina",
+ "away_c": "Qatar",
+ "p_home": 0.3337704867168741,
+ "p_draw": 0.2699289906934407,
+ "p_away": 0.3963005225896853,
+ "top_score": "1-1",
+ "gp_score": "0-1",
+ "lineups_source": "FIFA",
+ "model": {
+  "ph": 0.3337704867168741,
+  "pd": 0.2699289906934407,
+  "pa": 0.3963005225896853
+ }
+}
