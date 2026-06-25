@@ -134,3 +134,28 @@ def _tab_modelo(base, competitions):
     registro aparece como una columna nueva. La fila BASE son los defaults
     universales del modelo.</p>
 </section>"""
+
+
+def render(con, preds, data_version) -> str:
+    from .store import now_iso
+    acc = panel_data.accuracy(con)
+    base, comps = panel_data.calibration(con)
+    page = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Score Predictor · Mundial 2026</title>
+<link rel="stylesheet" href="{FONTS}">
+<style>{CSS}</style></head><body><div class="wrap">
+<h1>⚽ Score Predictor · Mundial 2026</h1>
+<div class="sub">Generado {now_iso()} · {len(preds)} partidos próximos</div>
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-target="proximos">Próximos</button>
+  <button class="tab" role="tab" aria-selected="false" data-target="aciertos">Aciertos</button>
+  <button class="tab" role="tab" aria-selected="false" data-target="modelo">Modelo</button>
+</div>
+{_tab_proximos(preds)}
+{_tab_aciertos(acc)}
+{_tab_modelo(base, comps)}
+</div>{TABS_JS}</body></html>"""
+    with open(PANEL_PATH, "w", encoding="utf-8") as f:
+        f.write(page)
+    return PANEL_PATH
