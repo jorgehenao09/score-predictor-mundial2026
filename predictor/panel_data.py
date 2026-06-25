@@ -4,12 +4,12 @@ import numpy as np
 
 from . import golpredictor as gp
 from . import learning, store
-from .predict import brier, goal_uplift, rps
+from .predict import goal_uplift, rps
 
 # Registro de competiciones: para escalar, añadir una entrada y su snapshot.
 # Hoy solo Mundial 2026 (su calibración sale del estado vivo del modelo).
 BASE = {  # defaults universales del modelo (no se recalculan)
-    "xi": "0.0005", "rho": "—", "local": "—", "blend": "0.50", "uplift": "1.00",
+    "xi": "0.0005", "rho": "—", "local": "—", "blend": "0.50", "uplift": "1.10",
     "autotune": "—",
 }
 
@@ -88,8 +88,8 @@ def accuracy(con):
         is_exact = ts == f"{hs}-{as_}"
         exact += is_exact
         ko = gp.is_knockout(d)
-        modal = tuple(map(int, ts.split("-")))
-        pts = gp.points(modal, (hs, as_), ko)
+        pick = tuple(map(int, (gps if gps else ts).split("-")))
+        pts = gp.points(pick, (hs, as_), ko)
         modal_pts += pts
         o = _closing_odds(con, h, a, verdict)
         if o:

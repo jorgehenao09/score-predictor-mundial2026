@@ -53,14 +53,14 @@ def _card(pred):
                       for f in pred.get("factors", []))
     return f"""<div class="card">
   <div class="head">{h} vs {a}</div>
-  <div class="meta">{pred['match_date']}{venue}</div>
+  <div class="meta">{html.escape(str(pred['match_date']))}{venue}</div>
   <div style="margin-top:8px">🎯 <span class="pick gp">golpredictor
     {html.escape(pred.get('gp_score', pred['top_score']))}</span>
     <span class="meta">· más probable {html.escape(pred['top_score'])}</span></div>
   {rem}
   <div class="meta" style="margin-top:6px">Alternativas: {alts}</div>
   {bars}
-  <div style="margin-top:8px"><span class="badge {conf}">confianza
+  <div style="margin-top:8px"><span class="badge {html.escape(conf)}">confianza
     {html.escape(pred['confidence'])}</span></div>
   <ul class="meta" style="margin:8px 0 0;padding-left:18px">{factors}</ul>
 </div>"""
@@ -143,10 +143,10 @@ def render(con, preds, data_version) -> str:
     page = f"""<!doctype html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Score Predictor · Mundial 2026</title>
-<link rel="stylesheet" href="{FONTS}">
+<link rel="stylesheet" href="{html.escape(FONTS)}">
 <style>{CSS}</style></head><body><div class="wrap">
 <h1>⚽ Score Predictor · Mundial 2026</h1>
-<div class="sub">Generado {now_iso()} · {len(preds)} partidos próximos</div>
+<div class="sub">Generado {now_iso()} · {len(preds)} partidos próximos · datos: {html.escape(" · ".join(f"{k} {v}" for k, v in data_version.items()))}</div>
 <div class="tabs" role="tablist">
   <button class="tab" role="tab" aria-selected="true" data-target="proximos">Próximos</button>
   <button class="tab" role="tab" aria-selected="false" data-target="aciertos">Aciertos</button>
