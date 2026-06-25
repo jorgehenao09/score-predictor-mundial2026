@@ -104,3 +104,33 @@ def _tab_aciertos(acc):
   <table><thead><tr><th>Fecha</th><th>Partido</th><th>Veredicto</th>
     <th>Real</th><th>✓/✗</th><th>Pts</th></tr></thead><tbody>{trs}</tbody></table>
 </section>"""
+
+
+PARAMS = [("xi", "xi (decaimiento temporal)"), ("rho", "rho (marcadores bajos)"),
+          ("local", "ventaja local"), ("blend", "mezcla modelo↔mercado"),
+          ("uplift", "goal uplift"), ("autotune", "¿auto-ajusta?")]
+
+
+def _tab_modelo(base, competitions):
+    cols = "".join(f"<th>{html.escape(c['name'])}</th>" for c in competitions)
+    rows = ""
+    for key, label in PARAMS:
+        cells = "".join(f'<td class="n">{html.escape(str(c["params"][key]))}</td>'
+                        for c in competitions)
+        rows += (f'<tr><td>{html.escape(label)}</td>'
+                 f'<td class="n">{html.escape(str(base[key]))}</td>{cells}</tr>')
+    return f"""<section class="panel" id="modelo" hidden>
+  <div class="explain">
+    <b>El modelo base (universal, no cambia entre competiciones).</b><br>
+    Dixon-Coles ponderado por tiempo (ataque/defensa por selección, corrección
+    rho de marcadores bajos) · prior Elo para selecciones con poca muestra ·
+    de-vigging del mercado por método de Shin · marcador óptimo-EV para
+    golpredictor · y una <b>mezcla modelo↔mercado autoaprendida</b> que minimiza
+    el RPS sobre lo ya jugado.
+  </div>
+  <table><thead><tr><th>Parámetro</th><th>BASE</th>{cols}</tr></thead>
+    <tbody>{rows}</tbody></table>
+  <p class="meta" style="margin-top:12px">Cada competición que se añada al
+    registro aparece como una columna nueva. La fila BASE son los defaults
+    universales del modelo.</p>
+</section>"""
