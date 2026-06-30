@@ -113,29 +113,39 @@ def _tab_aciertos(acc):
 </section>"""
 
 
-PARAMS = [("xi", "xi (decaimiento temporal)"), ("rho", "rho (marcadores bajos)"),
-          ("local", "ventaja local"), ("blend", "mezcla modelo↔mercado"),
-          ("uplift", "goal uplift"), ("autotune", "¿auto-ajusta?")]
+PARAMS = [
+    ("xi", "xi (decaimiento temporal)", "cuánto pesan los partidos viejos"),
+    ("rho", "rho (marcadores bajos)", "corrección Dixon-Coles de 0-0 / 1-1"),
+    ("local", "ventaja local", "bono al anfitrión que juega en su país"),
+    ("blend", "mezcla modelo↔mercado", "peso del mercado, autoaprendido"),
+    ("uplift", "goal uplift", "corrección de volumen de goles"),
+    ("autotune", "¿auto-ajusta?", "qué se recalibra solo")]
+
+LAYERS = ["Dixon-Coles", "prior Elo", "Shin de-vig", "óptimo-EV", "mezcla auto"]
 
 
 def _tab_modelo(base, competitions):
-    cols = "".join(f"<th>{html.escape(c['name'])}</th>" for c in competitions)
+    cols = "".join(f'<th>{html.escape(c["name"])}</th>' for c in competitions)
+    chips = "".join(f'<span class="chip">{html.escape(x)}</span>' for x in LAYERS)
     rows = ""
-    for key, label in PARAMS:
+    for key, label, desc in PARAMS:
         cells = "".join(f'<td class="n">{html.escape(str(c["params"][key]))}</td>'
                         for c in competitions)
-        rows += (f'<tr><td>{html.escape(label)}</td>'
-                 f'<td class="n">{html.escape(str(base[key]))}</td>{cells}</tr>')
+        rows += (f'<tr><td>{html.escape(label)}'
+                 f'<span class="desc">{html.escape(desc)}</span></td>'
+                 f'<td class="n base">{html.escape(str(base[key]))}</td>{cells}</tr>')
     return f"""<section class="panel" id="modelo" hidden>
   <div class="explain">
-    <b>El modelo base (universal, no cambia entre competiciones).</b><br>
+    <b>El modelo base (universal, no cambia entre competiciones).</b>
+    <div class="layers">{chips}</div>
     Dixon-Coles ponderado por tiempo (ataque/defensa por selección, corrección
     rho de marcadores bajos) · prior Elo para selecciones con poca muestra ·
     de-vigging del mercado por método de Shin · marcador óptimo-EV para
     golpredictor · y una <b>mezcla modelo↔mercado autoaprendida</b> que minimiza
     el RPS sobre lo ya jugado.
   </div>
-  <table><thead><tr><th>Parámetro</th><th>BASE</th>{cols}</tr></thead>
+  <table class="compare"><thead><tr><th>Parámetro</th>
+    <th class="base">BASE</th>{cols}</tr></thead>
     <tbody>{rows}</tbody></table>
   <p class="meta" style="margin-top:12px">Cada competición que se añada al
     registro aparece como una columna nueva. La fila BASE son los defaults
