@@ -77,7 +77,8 @@ def _tab_proximos(preds):
 
 
 def _kpi(value, label, accent=""):
-    return (f'<div class="kpi {accent}"><div class="v num">{value}</div>'
+    cls = f"kpi {accent}" if accent else "kpi"
+    return (f'<div class="{cls}"><div class="v num">{value}</div>'
             f'<div class="l">{label}</div></div>')
 
 
@@ -107,7 +108,7 @@ def _tab_aciertos(acc):
   <div class="kpis">{kpis}</div>
   <p class="meta">El modelo es fuerte prediciendo <b>quién gana</b>; el
     <b>marcador exacto</b> es intrínsecamente difícil. *ROI ilustrativo: apostar
-    al veredicto a cuota de cierre; no es consejo de apuesta.</p>
+    al ganador previsto (1X2) a cuota de cierre; no es consejo de apuesta.</p>
   <table><thead><tr><th>Fecha</th><th>Partido</th><th>Predicho → Real</th>
     <th>✓/✗</th><th>Pts</th></tr></thead><tbody>{trs}</tbody></table>
 </section>"""
