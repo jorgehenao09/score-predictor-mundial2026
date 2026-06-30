@@ -24,7 +24,7 @@ from . import learning, ratings, sources, store
 from .predict import (GOAL_UPLIFT_BAND, GOAL_UPLIFT_DEFAULT, TUNED_PARAMS_PATH,
                       goal_uplift, rps, score_matrix)
 
-GRID = [1.00, 1.05, 1.10, 1.15, 1.20]
+GRID = [1.00, 1.05, 1.10, 1.15, 1.20, 1.25, 1.30, 1.35]
 MIN_GAIN = 0.01      # mejora mínima relativa en puntos para cambiar (anti-churn)
 OUT_OF_BAND_MARGIN = 0.02   # ventaja mín. fuera de banda para disparar alerta
 LIVE_RPS_ALERT = 0.26       # RPS en vivo peor que esto (con muestra) = alerta

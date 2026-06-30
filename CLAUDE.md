@@ -100,12 +100,15 @@ y muestra qué cambió desde la consulta anterior. **Solo fuentes gratuitas.**
   Detección de eliminatoria por fecha (≥2026-06-28). Pendiente para
   eliminatorias: golpredictor puntúa solo 90'+reposición (sin prórroga/penales)
   — verificar que el resultado usado excluya la prórroga.
-- **Corrección de volumen de goles (`GOAL_UPLIFT=1.10`)**: el modelo corre
-  ~12% bajo el mercado en goles. HALLAZGO HONESTO del backtest: el uplift es
-  NEUTRO en puntos golpredictor (dentro del ruido en 128 partidos) — mi
-  hipótesis de que subiría puntos era FALSA. Se deja en 1.10 solo porque mejora
-  la tasa de marcador exacto (9.4%→12.5%), el RPS y el realismo, sin costar
-  puntos. La mejora de puntos viene del óptimo-EV, no de aquí. Env override.
+- **Corrección de volumen de goles (`GOAL_UPLIFT`, default 1.10, vigente 1.30)**:
+  el modelo corre bajo en goles. Hasta 2026-06-30 estaba en ~1.05-1.10 porque el
+  backtest WC2018/22 lo daba NEUTRO en puntos. **REVISIÓN 2026-06-30:** un sweep
+  multi-torneo destapó que **WC2026 es MUY goleador (real 2.94 g/p)** y que
+  nuestro pick óptimo-EV iba en 1.27 g/p — menos de la mitad. El top-5 de la
+  polla predice ~2.74 g/p y gana. El sweep (WC2026 in-tournament + WC2018/22 OOS)
+  da **g=1.30 óptimo en agregado (+31 pts; +30 en WC2026, +8 en WC2018, −7 en
+  WC2022)**. Se amplió la banda a **[1.05,1.35]** y la autocalibración aplicó
+  1.30 (confirmado: 911 pts en 204 OOS vs 874 en 1.05). Env override.
 
 ## Gobernanza de calibración (qué se auto-ajusta y qué no, 2026-06-15)
 
@@ -118,7 +121,7 @@ auto-tocar) lo que se sobreajustaría.** Auto-tunear estructurales a diario con
 | Ratings ataque/defensa | reajuste completo Dixon-Coles | cada resultado (`ensure_fit`) |
 | Peso mezcla modelo↔mercado | `learning.py`, minimiza RPS con shrinkage hacia 0.5 | cada predicción; ya se movió a 0.25 |
 | Marcador óptimo-EV | óptimo por construcción para la matriz vigente | no necesita recalibración |
-| `GOAL_UPLIFT` (estructural) | `autocalibrate.py`: sweep OOS de puntos golpredictor sobre TODO el histórico (WC2018+2022+2026); **auto-aplica solo dentro de la banda validada [1.05,1.15]**, alerta si la evidencia sale de la banda | diaria (`autocalibrate.yml`, guard de fecha → 1/día; disparado por el marcapasos) |
+| `GOAL_UPLIFT` (estructural) | `autocalibrate.py`: sweep OOS de puntos golpredictor sobre TODO el histórico (WC2018+2022+2026); **auto-aplica solo dentro de la banda validada [1.05,1.35]** (ampliada 2026-06-30 tras backtest multi-torneo; vigente 1.30), alerta si la evidencia sale de la banda | diaria (`autocalibrate.yml`, guard de fecha → 1/día; disparado por el marcapasos) |
 | `xi`, `rho`, penalizaciones | fijos, validados multi-mundial | solo cambio manual tras backtest |
 
 - Valor vigente del uplift en `data/tuned_params.json` (committeado; la BD es

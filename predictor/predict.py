@@ -30,10 +30,15 @@ ALTITUDE_PENALTY = 0.07       # 7% para no aclimatados por encima de 1500 m
 # golpredictor (dentro del ruido en 128 partidos) — mejora la tasa de marcador
 # EXACTO (9.4%→12.5%), el RPS y el realismo, sin costar puntos.
 # Valor DINÁMICO: lo auto-ajusta a diario `autocalibrate.py` dentro de la banda
-# validada [1.05,1.15] y lo persiste en data/tuned_params.json (committeado;
-# la BD es efímera en CI). Prioridad: env > archivo > default.
+# validada y lo persiste en data/tuned_params.json (committeado; la BD es efímera
+# en CI). Prioridad: env > archivo > default.
+# Banda ampliada el 2026-06-30: un sweep multi-torneo (WC2026 in-tournament +
+# WC2018/22 OOS) mostró que WC2026 corre MUY goleador (real 2.94 g/p; nuestro
+# pick óptimo-EV iba en 1.27) y que g=1.30 es óptimo en agregado (+31 pts; mejor
+# en 2 de 3 mundiales, +30 en WC2026). Corroborado por el top-5 de la polla, que
+# predice ~2.74 g/p y gana. Ver docs/superpowers/specs si se regenera.
 GOAL_UPLIFT_DEFAULT = 1.10
-GOAL_UPLIFT_BAND = (1.05, 1.15)
+GOAL_UPLIFT_BAND = (1.05, 1.35)
 TUNED_PARAMS_PATH = os.path.join(store.BASE_DIR, "data", "tuned_params.json")
 
 
