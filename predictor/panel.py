@@ -159,3 +159,87 @@ def render(con, preds, data_version) -> str:
     with open(PANEL_PATH, "w", encoding="utf-8") as f:
         f.write(page)
     return PANEL_PATH
+
+
+def _heat(bd):
+    gi, gj = bd["gp_cell"]
+    ti, tj = bd["modal_cell"]
+    m = bd["matrix6"]
+    mx = max(max(r) for r in m) or 1.0
+    out = ['<div class="heat"><span></span>']
+    out += [f'<span class="hd">{j}</span>' for j in range(6)]
+    for i in range(6):
+        out.append(f'<span class="hd">{i}</span>')
+        for j in range(6):
+            p = m[i][j]
+            cls = "cell" + (" gp" if (i, j) == (gi, gj) else "")
+            cls += " modal" if (i, j) == (ti, tj) else ""
+            op = 0.08 + 0.92 * (p / mx)
+            out.append(f'<span class="{cls}" title="{i}-{j}: {p:.1%}" '
+                       f'style="background:rgba(37,99,235,{op:.2f})">'
+                       f'{p*100:.0f}</span>')
+    out.append('</div>')
+    return "".join(out)
+
+
+def _fbars(terms):
+    mx = max((abs(v) for _, v in terms), default=1.0) or 1.0
+    rows = ""
+    for label, v in terms:
+        w = abs(v) / mx * 50
+        seg = (f'<span class="pos" style="width:{w:.0f}%"></span>' if v >= 0
+               else f'<span class="neg" style="width:{w:.0f}%"></span>')
+        rows += (f'<div class="fbar"><span>{html.escape(label)}</span>'
+                 f'<span class="track2">{seg}</span>'
+                 f'<span class="v">{v:+.2f}</span></div>')
+    return rows
+
+
+def _modal(pred, idx):
+    h, a = html.escape(pred["home"]), html.escape(pred["away"])
+    bd = pred["breakdown"]
+    bars = _stack(pred["p_home"], pred["p_draw"], pred["p_away"],
+                  pred["home"], pred["away"]) if "p_home" in pred else ""
+    mkt = bd["market_probs"]
+    mezcla = (f'{bd["blend_w"]:.0%} mercado / {1-bd["blend_w"]:.0%} modelo'
+              if mkt else "sin mercado (solo modelo)")
+    mrow = ""
+    if mkt:
+        mrow = (f'<div class="meta">Modelo {bd["model_probs"][0]:.0%}/'
+                f'{bd["model_probs"][1]:.0%}/{bd["model_probs"][2]:.0%} · '
+                f'Mercado {mkt[0]:.0%}/{mkt[1]:.0%}/{mkt[2]:.0%}</div>')
+    return f"""<div class="backdrop" id="d-{idx}" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Detalle {h} vs {a}">
+    <button class="x" aria-label="Cerrar" data-close="1">✕</button>
+    <h2>{h} vs {a} · cómo se llegó al {html.escape(pred.get('gp_score', pred['top_score']))}</h2>
+    {bars}
+    <h3>Matriz de goles (probabilidad de cada marcador)</h3>
+    {_heat(bd)}
+    <div class="meta" style="margin-top:6px">Borde verde = 🎯 óptimo-EV ·
+      borde azul = más probable. Local en filas, visita en columnas.</div>
+    <h3>Peso de cada factor — {h} (goles esp., log)</h3>
+    {_fbars(bd["home_terms"])}
+    <h3>Peso de cada factor — {a}</h3>
+    {_fbars(bd["away_terms"])}
+    <h3>Mezcla modelo ↔ mercado</h3>
+    <div class="meta">{mezcla}</div>
+    {mrow}
+  </div></div>"""
+
+
+MODAL_JS = """
+<script>
+(function(){
+  function open(id){var m=document.getElementById(id);if(m)m.hidden=false;}
+  function closeAll(){document.querySelectorAll('.backdrop').forEach(function(b){b.hidden=true;});}
+  document.querySelectorAll('.card[data-detail]').forEach(function(c){
+    c.addEventListener('click',function(){open(c.dataset.detail);});
+    c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();open(c.dataset.detail);}});
+  });
+  document.querySelectorAll('.backdrop').forEach(function(b){
+    b.addEventListener('click',function(e){if(e.target===b||e.target.dataset.close)closeAll();});
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAll();});
+})();
+</script>
+"""
