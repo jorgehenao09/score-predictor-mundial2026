@@ -76,37 +76,40 @@ def _tab_proximos(preds):
             f'</div>{modals}</section>')
 
 
-def _kpi(value, label):
-    return f'<div class="kpi"><div class="v num">{value}</div><div class="l">{label}</div></div>'
+def _kpi(value, label, accent=""):
+    return (f'<div class="kpi {accent}"><div class="v num">{value}</div>'
+            f'<div class="l">{label}</div></div>')
 
 
 def _tab_aciertos(acc):
     if not acc["n"]:
         return ('<section class="panel" id="aciertos" hidden>'
                 '<p class="meta">Aún no hay partidos resueltos.</p></section>')
-    roi = f"{acc['roi']:+.0f}%" if acc["roi"] is not None else "—"
+    roi_v = acc["roi"]
+    roi = f"{roi_v:+.0f}%" if roi_v is not None else "—"
+    roi_acc = "" if roi_v is None else ("k-final" if roi_v >= 0 else "k-miss")
     kpis = (
-        _kpi(f"{acc['hits_1x2']:.0f}%", "1X2 acertado")
-        + _kpi(f"{acc['exact']:.0f}%", "Marcador exacto")
-        + _kpi(str(acc["gp_points"]), "Puntos golpredictor")
+        _kpi(f"{acc['hits_1x2']:.0f}%", "1X2 acertado", "k-model")
+        + _kpi(f"{acc['exact']:.0f}%", "Marcador exacto", "k-final")
+        + _kpi(str(acc["gp_points"]), "Puntos golpredictor", "k-value")
         + _kpi(f"{acc['rps']:.3f}", "RPS (calidad, menor mejor)")
-        + _kpi(roi, "ROI ilustrativo*"))
+        + _kpi(roi, "ROI ilustrativo*", roi_acc))
     trs = ""
     for r in acc["history"]:
         badge = ('<span class="badge hit">✓</span>' if r["ok"]
                  else '<span class="badge miss">✗</span>')
         trs += (f'<tr><td class="n">{html.escape(r["date"])}</td>'
                 f'<td>{html.escape(r["home"])} vs {html.escape(r["away"])}</td>'
-                f'<td>{html.escape(r["verdict"])}</td>'
-                f'<td class="n">{html.escape(r["real"])}</td>'
+                f'<td class="n">{html.escape(r.get("pred", "—"))} '
+                f'<span class="arrow">→</span> {html.escape(r["real"])}</td>'
                 f'<td>{badge}</td><td class="n">{r["pts"]}</td></tr>')
     return f"""<section class="panel" id="aciertos" hidden>
   <div class="kpis">{kpis}</div>
   <p class="meta">El modelo es fuerte prediciendo <b>quién gana</b>; el
     <b>marcador exacto</b> es intrínsecamente difícil. *ROI ilustrativo: apostar
     al veredicto a cuota de cierre; no es consejo de apuesta.</p>
-  <table><thead><tr><th>Fecha</th><th>Partido</th><th>Veredicto</th>
-    <th>Real</th><th>✓/✗</th><th>Pts</th></tr></thead><tbody>{trs}</tbody></table>
+  <table><thead><tr><th>Fecha</th><th>Partido</th><th>Predicho → Real</th>
+    <th>✓/✗</th><th>Pts</th></tr></thead><tbody>{trs}</tbody></table>
 </section>"""
 
 
