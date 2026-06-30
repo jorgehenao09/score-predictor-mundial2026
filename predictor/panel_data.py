@@ -129,7 +129,8 @@ def accuracy(con):
             ret += STAKE * o if ok else 0
         vlabel = (h if verdict == 0 else a if verdict == 2 else "Empate")
         history.append({"date": d, "home": h, "away": a, "verdict": vlabel,
-                        "real": f"{hs}-{as_}", "ok": ok, "pts": pts})
+                        "real": f"{hs}-{as_}", "ok": ok, "pts": pts,
+                        "pred": (gps if gps else ts)})
     roi = ((ret - staked) / staked * 100) if staked else None
     return {
         "n": n,
