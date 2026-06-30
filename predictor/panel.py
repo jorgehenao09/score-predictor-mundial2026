@@ -30,39 +30,39 @@ def _bar(cls, label, p):
             f'<span class="num">{p * 100:.0f}%</span></div>')
 
 
-def _card(pred):
+def _stack(ph, pd, pa, home, away):
+    return (
+        '<div class="stack">'
+        f'<span class="s-home" style="width:{ph*100:.0f}%"></span>'
+        f'<span class="s-draw" style="width:{pd*100:.0f}%"></span>'
+        f'<span class="s-away" style="width:{pa*100:.0f}%"></span></div>'
+        f'<div class="stack-lbl"><span>{html.escape(home)} {ph:.0%}</span>'
+        f'<span>Empate {pd:.0%}</span>'
+        f'<span>{html.escape(away)} {pa:.0%}</span></div>')
+
+
+def _card(pred, idx):
     h, a = html.escape(pred["home"]), html.escape(pred["away"])
     v = venue_info(pred.get("city", ""))
     venue = f' · {html.escape(v[0])}' if v else ""
     conf = pred["confidence"].lower()
-    alts = "  ".join(f'{html.escape(s)} <span class="meta">{p:.0%}</span>'
-                     for s, p in pred.get("top_scores", [])[1:4])
-    rem = ""
+    chips = (f'<span class="chip gp">🎯 {html.escape(pred.get("gp_score", pred["top_score"]))}</span>'
+             f'<span class="chip" title="más probable">≈ {html.escape(pred["top_score"])}</span>')
     c = pred.get("contrarian")
     if c:
-        rem = (f'<div>🎲 <span class="pick rem">remontada {html.escape(c["score"])}'
-               f'</span> <span class="meta">(mercado infravalora '
-               f'+{c["edge"]:.0%})</span></div>')
-    bars = ""
-    if "market_p_home" in pred:
-        bars = ('<div class="bars">'
-                + _bar("model", f"{pred['home'][:10]} modelo", pred["model_p_home"])
-                + _bar("market", "mercado", pred["market_p_home"])
-                + _bar("final", "final", pred["p_home"]) + '</div>')
-    factors = "".join(f"<li>{html.escape(f)}</li>"
-                      for f in pred.get("factors", []))
-    return f"""<div class="card">
-  <div class="head">{h} vs {a}</div>
+        chips += (f'<span class="chip rem">🎲 {html.escape(c["score"])}</span>'
+                  f'<span class="chip val">⚡ valor +{c["edge"]:.0%}</span>')
+    bars = (_stack(pred["p_home"], pred["p_draw"], pred["p_away"], pred["home"],
+                   pred["away"]) if "p_home" in pred else "")
+    return f"""<div class="card" data-detail="d-{idx}" tabindex="0" role="button"
+     aria-label="Ver detalle {h} vs {a}">
+  <div class="teams"><b>{h} vs {a}</b>
+    <span class="badge {html.escape(conf)}">{html.escape(pred['confidence'])}</span></div>
   <div class="meta">{html.escape(str(pred['match_date']))}{venue}</div>
-  <div style="margin-top:8px">🎯 <span class="pick gp">golpredictor
-    {html.escape(pred.get('gp_score', pred['top_score']))}</span>
-    <span class="meta">· más probable {html.escape(pred['top_score'])}</span></div>
-  {rem}
-  <div class="meta" style="margin-top:6px">Alternativas: {alts}</div>
   {bars}
-  <div style="margin-top:8px"><span class="badge {html.escape(conf)}">confianza
-    {html.escape(pred['confidence'])}</span></div>
-  <ul class="meta" style="margin:8px 0 0;padding-left:18px">{factors}</ul>
+  <div class="chips">{chips}</div>
+  <div class="meta" style="margin-top:6px">λ {pred['exp_home']:.2f}–{pred['exp_away']:.2f}
+    · <span style="color:var(--model)">ver detalle →</span></div>
 </div>"""
 
 
