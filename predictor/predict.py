@@ -188,6 +188,7 @@ def predict_match(con, fit, fixture):
     aa, da, ea = R.get(away, (0.0, 0.0, 0.0))
 
     factors = []
+    _ctx_h, _ctx_a = [], []   # ajustes de contexto (altitud/descanso/calor) en log-goles
     # Localía POR SEDE (no por la localía nominal del calendario): el host real
     # —quien juega en su país— recibe la ventaja, aunque figure como visitante.
     # Si la sede no está registrada (otras competiciones), se usa el flag del
@@ -219,8 +220,10 @@ def predict_match(con, fit, fixture):
         stadium = v[0] if v else city
         if home not in ALTITUDE_ACCLIMATED:
             lh *= 1 - ALTITUDE_PENALTY
+            _ctx_h.append(("Altitud", float(np.log(1 - ALTITUDE_PENALTY))))
         if away not in ALTITUDE_ACCLIMATED:
             la *= 1 - ALTITUDE_PENALTY
+            _ctx_a.append(("Altitud", float(np.log(1 - ALTITUDE_PENALTY))))
         pen = [t for t in (home, away) if t not in ALTITUDE_ACCLIMATED]
         if pen:
             factors.append(f"Altitud: {stadium} ({alt} m) penaliza a "
@@ -235,8 +238,10 @@ def predict_match(con, fit, fixture):
             pen = min(abs(diff) * REST_PENALTY_PER_DAY, REST_PENALTY_CAP)
             if tired == home:
                 lh *= 1 - pen
+                _ctx_h.append(("Descanso", float(np.log(1 - pen))))
             else:
                 la *= 1 - pen
+                _ctx_a.append(("Descanso", float(np.log(1 - pen))))
             factors.append(f"Descanso: {tired} llega con {abs(diff)} días menos "
                            f"de recuperación (-{pen * 100:.0f}%)")
 
@@ -250,6 +255,8 @@ def predict_match(con, fit, fixture):
         if pen:
             lh *= mult
             la *= mult
+            _ctx_h.append(("Calor", float(np.log(mult))))
+            _ctx_a.append(("Calor", float(np.log(mult))))
             factors.append(f"Calor: {t:.0f}°C previstos en la sede a la hora "
                            f"del partido (-{pen * 100:.0f}% goles esperados)")
         elif t is not None and t >= 28:
@@ -355,6 +362,35 @@ def predict_match(con, fit, fixture):
 
     market_part.pop("market_p_over", None)
     market_part.pop("totals_point", None)
+
+    # --- descomposición para el modal de detalle del dashboard
+    _ht = [("Base", float(fit["mu"])), (f"Ataque {home}", float(ah)),
+           (f"Defensa {away}", float(-da))]
+    if ha_home:
+        _ht.append(("Ventaja local", float(ha_home)))
+    _ht.append(("Uplift goles", float(np.log(uplift))))
+    _ht.extend(_ctx_h)
+    _at = [("Base", float(fit["mu"])), (f"Ataque {away}", float(aa)),
+           (f"Defensa {home}", float(-dh))]
+    if ha_away:
+        _at.append(("Ventaja local", float(ha_away)))
+    _at.append(("Uplift goles", float(np.log(uplift))))
+    _at.extend(_ctx_a)
+    _mkt = None
+    if market_part and market_part.get("market_p_home") is not None:
+        _mkt = (market_part["market_p_home"], market_part["market_p_draw"],
+                market_part["market_p_away"])
+    breakdown = {
+        "lh": float(lh), "la": float(la),
+        "home_terms": _ht, "away_terms": _at,
+        "matrix6": [[float(M[i, j]) for j in range(6)] for i in range(6)],
+        "model_probs": (mp["h"], mp["d"], mp["a"]),
+        "market_probs": _mkt,
+        "final_probs": (p_home, p_draw, p_away),
+        "blend_w": float(blend_w) if M_mkt is not None else 0.0,
+        "gp_cell": (gi, gj), "modal_cell": (ti, tj),
+    }
+
     return {
         "match_date": mdate, "home": home, "away": away, "city": city,
         "exp_home": float(lh), "exp_away": float(la),
@@ -364,6 +400,7 @@ def predict_match(con, fit, fixture):
         "top_score": f"{ti}-{tj}", "top_score_prob": float(tp),
         "top_scores": [(f"{i}-{j}", float(p)) for (i, j), p in top],
         "gp_score": gp_score, "gp_score_prob": gp_prob, "gp_ev": float(gp_ev),
+        "breakdown": breakdown,
         "contrarian": contrarian,
         "knockout": knockout,
         "confidence": conf,
