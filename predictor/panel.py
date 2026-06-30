@@ -67,9 +67,13 @@ def _card(pred, idx):
 
 
 def _tab_proximos(preds):
-    cards = "\n".join(_card(p) for p in preds) or \
-        '<p class="meta">Sin partidos próximos.</p>'
-    return f'<section class="panel" id="proximos"><div class="grid">{cards}</div></section>'
+    if not preds:
+        return ('<section class="panel" id="proximos">'
+                '<p class="meta">Sin partidos próximos.</p></section>')
+    cards = "\n".join(_card(p, i) for i, p in enumerate(preds))
+    modals = "\n".join(_modal(p, i) for i, p in enumerate(preds))
+    return (f'<section class="panel" id="proximos"><div class="grid">{cards}'
+            f'</div>{modals}</section>')
 
 
 def _kpi(value, label):
@@ -155,7 +159,7 @@ def render(con, preds, data_version) -> str:
 {_tab_proximos(preds)}
 {_tab_aciertos(acc)}
 {_tab_modelo(base, comps)}
-</div>{TABS_JS}</body></html>"""
+</div>{TABS_JS}{MODAL_JS}</body></html>"""
     with open(PANEL_PATH, "w", encoding="utf-8") as f:
         f.write(page)
     return PANEL_PATH
