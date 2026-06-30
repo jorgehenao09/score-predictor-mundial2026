@@ -76,63 +76,77 @@ def _tab_proximos(preds):
             f'</div>{modals}</section>')
 
 
-def _kpi(value, label):
-    return f'<div class="kpi"><div class="v num">{value}</div><div class="l">{label}</div></div>'
+def _kpi(value, label, accent=""):
+    cls = f"kpi {accent}" if accent else "kpi"
+    return (f'<div class="{cls}"><div class="v num">{value}</div>'
+            f'<div class="l">{label}</div></div>')
 
 
 def _tab_aciertos(acc):
     if not acc["n"]:
         return ('<section class="panel" id="aciertos" hidden>'
                 '<p class="meta">Aún no hay partidos resueltos.</p></section>')
-    roi = f"{acc['roi']:+.0f}%" if acc["roi"] is not None else "—"
+    roi_v = acc["roi"]
+    roi = f"{roi_v:+.0f}%" if roi_v is not None else "—"
+    roi_acc = "" if roi_v is None else ("k-final" if roi_v >= 0 else "k-miss")
     kpis = (
-        _kpi(f"{acc['hits_1x2']:.0f}%", "1X2 acertado")
-        + _kpi(f"{acc['exact']:.0f}%", "Marcador exacto")
-        + _kpi(str(acc["gp_points"]), "Puntos golpredictor")
+        _kpi(f"{acc['hits_1x2']:.0f}%", "1X2 acertado", "k-model")
+        + _kpi(f"{acc['exact']:.0f}%", "Marcador exacto", "k-final")
+        + _kpi(str(acc["gp_points"]), "Puntos golpredictor", "k-value")
         + _kpi(f"{acc['rps']:.3f}", "RPS (calidad, menor mejor)")
-        + _kpi(roi, "ROI ilustrativo*"))
+        + _kpi(roi, "ROI ilustrativo*", roi_acc))
     trs = ""
     for r in acc["history"]:
         badge = ('<span class="badge hit">✓</span>' if r["ok"]
                  else '<span class="badge miss">✗</span>')
         trs += (f'<tr><td class="n">{html.escape(r["date"])}</td>'
                 f'<td>{html.escape(r["home"])} vs {html.escape(r["away"])}</td>'
-                f'<td>{html.escape(r["verdict"])}</td>'
-                f'<td class="n">{html.escape(r["real"])}</td>'
+                f'<td class="n">{html.escape(r.get("pred", "—"))} '
+                f'<span class="arrow">→</span> {html.escape(r["real"])}</td>'
                 f'<td>{badge}</td><td class="n">{r["pts"]}</td></tr>')
     return f"""<section class="panel" id="aciertos" hidden>
   <div class="kpis">{kpis}</div>
   <p class="meta">El modelo es fuerte prediciendo <b>quién gana</b>; el
     <b>marcador exacto</b> es intrínsecamente difícil. *ROI ilustrativo: apostar
-    al veredicto a cuota de cierre; no es consejo de apuesta.</p>
-  <table><thead><tr><th>Fecha</th><th>Partido</th><th>Veredicto</th>
-    <th>Real</th><th>✓/✗</th><th>Pts</th></tr></thead><tbody>{trs}</tbody></table>
+    al ganador previsto (1X2) a cuota de cierre; no es consejo de apuesta.</p>
+  <table><thead><tr><th>Fecha</th><th>Partido</th><th>Predicho → Real</th>
+    <th>✓/✗</th><th>Pts</th></tr></thead><tbody>{trs}</tbody></table>
 </section>"""
 
 
-PARAMS = [("xi", "xi (decaimiento temporal)"), ("rho", "rho (marcadores bajos)"),
-          ("local", "ventaja local"), ("blend", "mezcla modelo↔mercado"),
-          ("uplift", "goal uplift"), ("autotune", "¿auto-ajusta?")]
+PARAMS = [
+    ("xi", "xi (decaimiento temporal)", "cuánto pesan los partidos viejos"),
+    ("rho", "rho (marcadores bajos)", "corrección Dixon-Coles de 0-0 / 1-1"),
+    ("local", "ventaja local", "bono al anfitrión que juega en su país"),
+    ("blend", "mezcla modelo↔mercado", "peso del mercado, autoaprendido"),
+    ("uplift", "goal uplift", "corrección de volumen de goles"),
+    ("autotune", "¿auto-ajusta?", "qué se recalibra solo")]
+
+LAYERS = ["Dixon-Coles", "prior Elo", "Shin de-vig", "óptimo-EV", "mezcla auto"]
 
 
 def _tab_modelo(base, competitions):
-    cols = "".join(f"<th>{html.escape(c['name'])}</th>" for c in competitions)
+    cols = "".join(f'<th>{html.escape(c["name"])}</th>' for c in competitions)
+    chips = "".join(f'<span class="chip">{html.escape(x)}</span>' for x in LAYERS)
     rows = ""
-    for key, label in PARAMS:
+    for key, label, desc in PARAMS:
         cells = "".join(f'<td class="n">{html.escape(str(c["params"][key]))}</td>'
                         for c in competitions)
-        rows += (f'<tr><td>{html.escape(label)}</td>'
-                 f'<td class="n">{html.escape(str(base[key]))}</td>{cells}</tr>')
+        rows += (f'<tr><td>{html.escape(label)}'
+                 f'<span class="desc">{html.escape(desc)}</span></td>'
+                 f'<td class="n base">{html.escape(str(base[key]))}</td>{cells}</tr>')
     return f"""<section class="panel" id="modelo" hidden>
   <div class="explain">
-    <b>El modelo base (universal, no cambia entre competiciones).</b><br>
+    <b>El modelo base (universal, no cambia entre competiciones).</b>
+    <div class="layers">{chips}</div>
     Dixon-Coles ponderado por tiempo (ataque/defensa por selección, corrección
     rho de marcadores bajos) · prior Elo para selecciones con poca muestra ·
     de-vigging del mercado por método de Shin · marcador óptimo-EV para
     golpredictor · y una <b>mezcla modelo↔mercado autoaprendida</b> que minimiza
     el RPS sobre lo ya jugado.
   </div>
-  <table><thead><tr><th>Parámetro</th><th>BASE</th>{cols}</tr></thead>
+  <table class="compare"><thead><tr><th>Parámetro</th>
+    <th class="base">BASE</th>{cols}</tr></thead>
     <tbody>{rows}</tbody></table>
   <p class="meta" style="margin-top:12px">Cada competición que se añada al
     registro aparece como una columna nueva. La fila BASE son los defaults

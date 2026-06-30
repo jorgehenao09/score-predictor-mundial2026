@@ -143,4 +143,14 @@ td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .fbar .pos{left:50%;background:var(--model)}
 .fbar .neg{right:50%;background:var(--miss)}
 .fbar .v{font-family:var(--mono);text-align:right}
+
+/* === Aciertos/Modelo v2 === */
+.kpi.k-model .v{color:var(--model)}
+.kpi.k-final .v{color:var(--final)}
+.kpi.k-value .v{color:var(--value)}
+.kpi.k-miss .v{color:var(--miss)}
+.arrow{color:var(--text-faint)}
+.layers{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin:var(--sp-2) 0 var(--sp-3)}
+.compare td.base,.compare th.base{background:var(--surface-2)}
+.compare .desc{display:block;font-size:11px;color:var(--text-faint);font-weight:400}
 """

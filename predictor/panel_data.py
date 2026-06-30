@@ -120,7 +120,8 @@ def accuracy(con):
         is_exact = ts == f"{hs}-{as_}"
         exact += is_exact
         ko = gp.is_knockout(d)
-        pick = tuple(map(int, (gps if gps else ts).split("-")))
+        pred = gps if gps else ts
+        pick = tuple(map(int, pred.split("-")))
         pts = gp.points(pick, (hs, as_), ko)
         modal_pts += pts
         o = _closing_odds(con, h, a, verdict)
@@ -129,7 +130,8 @@ def accuracy(con):
             ret += STAKE * o if ok else 0
         vlabel = (h if verdict == 0 else a if verdict == 2 else "Empate")
         history.append({"date": d, "home": h, "away": a, "verdict": vlabel,
-                        "real": f"{hs}-{as_}", "ok": ok, "pts": pts})
+                        "real": f"{hs}-{as_}", "ok": ok, "pts": pts,
+                        "pred": pred})
     roi = ((ret - staked) / staked * 100) if staked else None
     return {
         "n": n,
