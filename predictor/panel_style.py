@@ -94,6 +94,7 @@ td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
 /* === v2: card clicable, barra apilada, chips, modal, heatmap === */
 .card{cursor:pointer;transition:transform .2s,box-shadow .2s}
 .card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(15,23,42,.10)}
+.card:focus-visible{outline:2px solid var(--model);outline-offset:2px}
 .card .teams{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
 
 .stack{display:flex;height:14px;border-radius:99px;overflow:hidden;margin:var(--sp-2) 0 4px}

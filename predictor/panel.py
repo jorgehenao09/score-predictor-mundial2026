@@ -234,11 +234,11 @@ def _modal(pred, idx):
 MODAL_JS = """
 <script>
 (function(){
-  function open(id){var m=document.getElementById(id);if(m)m.hidden=false;}
-  function closeAll(){document.querySelectorAll('.backdrop').forEach(function(b){b.hidden=true;});}
+  function open(id, trigger){var m=document.getElementById(id);if(!m)return;m._trigger=trigger;m.hidden=false;var f=m.querySelector('button, [tabindex], a, input');if(f)f.focus();}
+  function closeAll(){document.querySelectorAll('.backdrop').forEach(function(b){if(!b.hidden&&b._trigger)b._trigger.focus();b.hidden=true;});}
   document.querySelectorAll('.card[data-detail]').forEach(function(c){
-    c.addEventListener('click',function(){open(c.dataset.detail);});
-    c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();open(c.dataset.detail);}});
+    c.addEventListener('click',function(){open(c.dataset.detail,c);});
+    c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();open(c.dataset.detail,c);}});
   });
   document.querySelectorAll('.backdrop').forEach(function(b){
     b.addEventListener('click',function(e){if(e.target===b||e.target.dataset.close)closeAll();});
