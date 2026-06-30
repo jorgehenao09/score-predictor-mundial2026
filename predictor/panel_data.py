@@ -1,5 +1,9 @@
 """Cálculos del dashboard, sin HTML: aciertos y calibración por competición.
 Reutiliza la lógica de `precision` y el estado vivo (fit, learning, params)."""
+import glob
+import json
+import os
+
 import numpy as np
 
 from . import golpredictor as gp
@@ -34,16 +38,44 @@ def calibration(con):
 
 
 def _resolved_rows(con):
-    return con.execute(
-        """SELECT p.home, p.away, p.match_date, p.p_home, p.p_draw, p.p_away,
-                  p.top_score, m.home_score, m.away_score, p.gp_score
-           FROM predictions p JOIN matches m
-             ON m.home=p.home AND m.away=p.away AND m.date=p.match_date
-           WHERE m.home_score IS NOT NULL
-             AND p.id IN (SELECT MAX(id) FROM predictions
-                          WHERE substr(created_at,1,10) <= match_date
-                          GROUP BY home, away, match_date)
-           ORDER BY p.match_date""").fetchall()
+    """Aciertos desde los marcadores de cierre commiteados (`data/notified/
+    *.cierre.json`) — el registro canónico de lo que se ENVIÓ por Telegram, igual
+    en local y nube. La tabla `predictions` local solo tiene lo predicho en esta
+    máquina (incompleto). Tupla: (home, away, date, p_home, p_draw, p_away,
+    top_score, home_score, away_score, gp_score), en la orientación del marcador.
+    Tolera que el calendario (martj42) guarde el partido con la orientación
+    invertida: busca el resultado en ambos sentidos y voltea el marcador."""
+    pat = os.path.join(store.BASE_DIR, "data", "notified", "*.cierre.json")
+    out, seen = [], set()
+    for path in sorted(glob.glob(pat)):
+        try:
+            with open(path, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        h, a, dt = d.get("home_c"), d.get("away_c"), d.get("date")
+        ts, ph = d.get("top_score"), d.get("p_home")
+        if not (h and a and dt and ts) or ph is None or (dt, h, a) in seen:
+            continue
+        r = con.execute(
+            """SELECT home_score, away_score FROM matches
+               WHERE date=? AND home=? AND away=? AND home_score IS NOT NULL""",
+            (dt, h, a)).fetchone()
+        if r:
+            hs, as_ = r
+        else:  # orientación invertida en el calendario: voltear el resultado
+            r = con.execute(
+                """SELECT home_score, away_score FROM matches
+                   WHERE date=? AND home=? AND away=? AND home_score IS NOT NULL""",
+                (dt, a, h)).fetchone()
+            if not r:
+                continue
+            hs, as_ = r[1], r[0]
+        seen.add((dt, h, a))
+        out.append((h, a, dt, ph, d["p_draw"], d["p_away"], ts,
+                    hs, as_, d.get("gp_score")))
+    out.sort(key=lambda x: x[2])
+    return out
 
 
 def _median(xs):

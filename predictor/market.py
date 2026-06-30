@@ -64,6 +64,12 @@ def consensus(book_odds_rows):
     med = [statistics.median(p[i] for p in probs) for i in range(3)]
     s = sum(med)
     med = [p / s for p in med]
+    # Guard de sensatez: un 1X2 de-vigueado con un outcome ≥90% entre selecciones
+    # de élite casi siempre es dato corrupto en origen (etiquetas cruzadas, cuotas
+    # absurdas tipo visita 150.0 — visto en Ecuador-Alemania). No confiar: que el
+    # llamador caiga al modelo en vez de mezclar/mostrar un mercado falso.
+    if max(med) >= 0.90:
+        return None
     return med[0], med[1], med[2], len(probs), statistics.mean(margins)
 
 
