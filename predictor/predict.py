@@ -355,6 +355,33 @@ def predict_match(con, fit, fixture):
 
     market_part.pop("market_p_over", None)
     market_part.pop("totals_point", None)
+
+    # --- descomposición para el modal de detalle del dashboard
+    _ht = [("Base", float(fit["mu"])), (f"Ataque {home}", float(ah)),
+           (f"Defensa {away}", float(-da))]
+    if ha_home:
+        _ht.append(("Ventaja local", float(ha_home)))
+    _ht.append(("Uplift goles", float(np.log(uplift))))
+    _at = [("Base", float(fit["mu"])), (f"Ataque {away}", float(aa)),
+           (f"Defensa {home}", float(-dh))]
+    if ha_away:
+        _at.append(("Ventaja local", float(ha_away)))
+    _at.append(("Uplift goles", float(np.log(uplift))))
+    _mkt = None
+    if market_part and market_part.get("market_p_home") is not None:
+        _mkt = (market_part["market_p_home"], market_part["market_p_draw"],
+                market_part["market_p_away"])
+    breakdown = {
+        "lh": float(lh), "la": float(la),
+        "home_terms": _ht, "away_terms": _at,
+        "matrix6": [[float(M[i, j]) for j in range(6)] for i in range(6)],
+        "model_probs": (mp["h"], mp["d"], mp["a"]),
+        "market_probs": _mkt,
+        "final_probs": (p_home, p_draw, p_away),
+        "blend_w": float(blend_w) if M_mkt is not None else 0.0,
+        "gp_cell": (gi, gj), "modal_cell": (ti, tj),
+    }
+
     return {
         "match_date": mdate, "home": home, "away": away, "city": city,
         "exp_home": float(lh), "exp_away": float(la),
@@ -364,6 +391,7 @@ def predict_match(con, fit, fixture):
         "top_score": f"{ti}-{tj}", "top_score_prob": float(tp),
         "top_scores": [(f"{i}-{j}", float(p)) for (i, j), p in top],
         "gp_score": gp_score, "gp_score_prob": gp_prob, "gp_ev": float(gp_ev),
+        "breakdown": breakdown,
         "contrarian": contrarian,
         "knockout": knockout,
         "confidence": conf,
