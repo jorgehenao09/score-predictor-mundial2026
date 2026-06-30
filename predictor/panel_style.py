@@ -90,4 +90,56 @@ td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
   color:var(--text-muted)}
 .explain b{color:var(--text)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* === v2: card clicable, barra apilada, chips, modal, heatmap === */
+.card{cursor:pointer;transition:transform .2s,box-shadow .2s}
+.card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(15,23,42,.10)}
+.card .teams{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
+
+.stack{display:flex;height:14px;border-radius:99px;overflow:hidden;margin:var(--sp-2) 0 4px}
+.stack > span{display:block}
+.stack .s-home{background:var(--model-fill)}
+.stack .s-draw{background:var(--draw)}
+.stack .s-away{background:var(--market-fill)}
+.stack-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)}
+
+.chips{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin-top:var(--sp-2)}
+.chip{font-family:var(--mono);font-size:12px;font-weight:600;padding:2px 8px;
+  border-radius:99px;background:var(--surface-2);color:var(--text)}
+.chip.gp{background:rgba(21,128,61,.12);color:var(--final)}
+.chip.rem{background:rgba(202,138,4,.14);color:var(--value)}
+.chip.val{background:rgba(37,99,235,.12);color:var(--model)}
+
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);
+  display:flex;align-items:flex-start;justify-content:center;padding:var(--sp-5);
+  overflow:auto;z-index:50}
+.backdrop[hidden]{display:none}
+.modal{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);max-width:720px;width:100%;padding:var(--sp-5);
+  box-shadow:0 20px 50px rgba(15,23,42,.25)}
+.modal h2{font-size:18px;margin:0 0 var(--sp-4)}
+.modal .x{float:right;border:0;background:var(--surface-2);cursor:pointer;
+  width:32px;height:32px;border-radius:8px;font-size:16px;color:var(--text-muted)}
+.modal .x:hover{color:var(--text)}
+.modal h3{font-size:12px;text-transform:uppercase;letter-spacing:.03em;
+  color:var(--text-muted);margin:var(--sp-5) 0 var(--sp-2)}
+
+/* heatmap matriz de goles */
+.heat{display:grid;grid-template-columns:auto repeat(6,1fr);gap:3px;font-size:11px;
+  font-family:var(--mono)}
+.heat .hd{color:var(--text-faint);text-align:center;align-self:center}
+.heat .cell{aspect-ratio:1;border-radius:4px;border:2px solid transparent;
+  display:flex;align-items:center;justify-content:center;color:var(--text)}
+.heat .cell.gp{border-color:var(--final)}
+.heat .cell.modal{border-color:var(--model)}
+
+/* barras de peso de factores (divergentes) */
+.fbar{display:grid;grid-template-columns:160px 1fr 56px;align-items:center;
+  gap:var(--sp-2);font-size:12px;margin:3px 0}
+.fbar .track2{height:10px;background:var(--surface-2);border-radius:4px;position:relative}
+.fbar .pos,.fbar .neg{position:absolute;top:0;height:100%;border-radius:4px}
+.fbar .pos{left:50%;background:var(--model)}
+.fbar .neg{right:50%;background:var(--miss)}
+.fbar .v{font-family:var(--mono);text-align:right}
 """
