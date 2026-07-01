@@ -1,0 +1,18 @@
+{
+ "sent_at": "2026-07-01T23:05:31Z",
+ "tipo": "cierre",
+ "date": "2026-07-01",
+ "home_c": "United States",
+ "away_c": "Bosnia and Herzegovina",
+ "p_home": 0.7521568791503336,
+ "p_draw": 0.1430067385099899,
+ "p_away": 0.1048363823396766,
+ "top_score": "2-1",
+ "gp_score": "3-1",
+ "lineups_source": "FIFA",
+ "model": {
+  "ph": 0.7521568791503336,
+  "pd": 0.1430067385099899,
+  "pa": 0.1048363823396766
+ }
+}
