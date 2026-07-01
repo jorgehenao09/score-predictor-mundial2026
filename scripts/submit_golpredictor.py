@@ -11,6 +11,7 @@ from notify_telegram import find_fixture_row, send              # noqa: E402
 
 from predictor import golpredictor_client as C                  # noqa: E402
 from predictor import predict as P                              # noqa: E402
+from predictor import sources                                   # noqa: E402
 from predictor import store                                     # noqa: E402
 from predictor.cli import ensure_fit                            # noqa: E402
 from predictor.names import canonical                           # noqa: E402
@@ -58,9 +59,11 @@ def main():
     pending = C.pending_matches(s, act, p1)
 
     con = store.connect()
+    sources.sync_results(con)          # BD efímera en CI: poblarla antes del fit
     fit, _ = ensure_fit(con)
     known = {x[0] for x in con.execute("SELECT DISTINCT home FROM matches")} | \
             {x[0] for x in con.execute("SELECT DISTINCT away FROM matches")}
+    sources.fetch_odds(con, known, force=True)   # cuotas frescas para la mezcla
     pend_by_pair = {frozenset((_canon(m["home"], known), _canon(m["away"], known))): m
                     for m in pending}
 
