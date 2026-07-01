@@ -117,3 +117,25 @@ def pending_matches(s, action, page1):
                 out.append({"page": n, "ctl": r["ctl"],
                             "home": r["home"], "away": r["away"]})
     return out
+
+
+def submit(s, action, page_html, fills, dry=False):
+    """Rellena las cajas de los ctl indicados y postea butGuardar, PRESERVANDO
+    los demás marcadores de la página. fills: {ctl: (gl, gv)}.
+    Si dry=True devuelve el payload (dict) sin enviar. Si no, devuelve True/False."""
+    d = _form_fields(page_html)  # incluye TODAS las cajas con su valor actual
+    for ctl, (gl, gv) in fills.items():
+        for name in list(d):
+            if name.endswith(f"${ctl}$txtGolLocal"):
+                d[name] = str(gl)
+            elif name.endswith(f"${ctl}$txtGolVisitante"):
+                d[name] = str(gv)
+    d["ctl00$ContentPlaceInner$butGuardar.x"] = "10"
+    d["ctl00$ContentPlaceInner$butGuardar.y"] = "10"
+    if dry:
+        return d
+    try:
+        r = s.post(BASE + action, data=d, timeout=25)
+        return "Oooops" not in r.url
+    except Exception:
+        return False
