@@ -1,0 +1,38 @@
+name: Publicar panel (GitHub Pages)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 */3 * * *"   # cada 3h regenera y publica
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar deps
+        run: pip install -r requirements.txt
+      - name: Generar panel
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+        run: python -m predictor panel 8 --no-abrir
+      - name: Preparar sitio
+        run: mkdir -p _site && cp data/panel.html _site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
