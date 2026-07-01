@@ -1,0 +1,38 @@
+name: Auto-envío golpredictor (T-3h, solo vacíos)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "9,29,49 12-23 * * *"   # respaldo; el marcapasos lo dispara además
+permissions:
+  contents: write
+concurrency:
+  group: golpredictor-submit
+  cancel-in-progress: false
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar deps
+        run: pip install requests numpy scipy
+      - name: Auto-enviar pronósticos
+        env:
+          GP_USER: ${{ secrets.GP_USER }}
+          GP_PASS: ${{ secrets.GP_PASS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          FOOTBALL_DATA_TOKEN: ${{ secrets.FOOTBALL_DATA_TOKEN }}
+        run: python scripts/submit_golpredictor.py
+      - name: Persistir marcadores de envío
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/notified || true
+          if ! git diff --cached --quiet; then
+            git commit -m "envio: $(date -u +%FT%TZ)"
+            for i in 1 2 3; do git push && break; git pull --rebase; done
+          fi
