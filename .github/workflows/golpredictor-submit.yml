@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar deps
-        run: pip install requests numpy scipy
+        run: pip install -r requirements.txt
       - name: Auto-enviar pronósticos
         env:
           GP_USER: ${{ secrets.GP_USER }}
