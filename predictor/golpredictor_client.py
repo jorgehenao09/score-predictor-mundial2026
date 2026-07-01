@@ -48,3 +48,72 @@ def login(user, pwd):
     except Exception:
         return None
     return s if any("AUTH" in c.name.upper() for c in s.cookies) else None
+
+
+def open_predictions(s):
+    """Navega a la polla (postback lnkUrlPronostico).
+    Devuelve (action_url, html_pagina1) o (None, None)."""
+    try:
+        acc = s.get(BASE + "myaccount.aspx", timeout=25).text
+        d = _form_fields(acc)
+        d["__EVENTTARGET"] = "ctl00$ContentPlaceInner$gvPollas$ctl02$lnkUrlPronostico"
+        d["__EVENTARGUMENT"] = ""
+        page = s.post(BASE + "myaccount.aspx", data=d, timeout=25).text
+        m = re.search(r'<form[^>]*action="([^"]+)"', page)
+        return (m.group(1).lstrip("./"), page) if m else (None, None)
+    except Exception:
+        return None, None
+
+
+def page(s, action, page1, n):
+    """HTML de la página n (1..4) de gvPartidos."""
+    if n == 1:
+        return page1
+    d = _form_fields(page1)
+    d["__EVENTTARGET"] = "ctl00$ContentPlaceInner$gvPartidos"
+    d["__EVENTARGUMENT"] = f"Page${n}"
+    return s.post(BASE + action, data=d, timeout=25).text
+
+
+def _input(row, suffix):
+    """(name_completo, ctl, value) de la caja <suffix> en una fila, o (None,)*3.
+    value = '' si la caja no trae atributo value (caja vacía/editable)."""
+    m = re.search(r'<input\b[^>]*name="([^"]*\$(ctl\d+)\$' + suffix + r')"[^>]*>', row)
+    if not m:
+        return None, None, None
+    v = re.search(r'value="([^"]*)"', m.group(0))
+    return m.group(1), m.group(2), (v.group(1) if v else "")
+
+
+def _rows(page_html):
+    """Filas de gvPartidos con cajas de marcador: {ctl, home, away, empty}."""
+    out = []
+    gm = re.search(r'<table[^>]*id="ctl00_ContentPlaceInner_gvPartidos".*?</table>',
+                   page_html, re.S)
+    if not gm:
+        return out
+    for row in re.findall(r"<tr.*?</tr>", gm.group(0), re.S):
+        nl, ctl, vl = _input(row, "txtGolLocal")
+        nv, _, vv = _input(row, "txtGolVisitante")
+        if not nl or not nv:
+            continue
+        cs = [_clean(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.S)]
+        cs = [c for c in cs if c]
+        part = cs[2].split(" - ") if len(cs) >= 3 else []
+        if len(part) != 2:
+            continue
+        out.append({"ctl": ctl, "home": part[0].strip(), "away": part[1].strip(),
+                    "empty": (vl == "" and vv == "")})
+    return out
+
+
+def pending_matches(s, action, page1):
+    """Partidos con cajas VACÍAS en las 4 páginas: [{page, ctl, home, away}]."""
+    out = []
+    for n in (1, 2, 3, 4):
+        h = page(s, action, page1, n)
+        for r in _rows(h):
+            if r["empty"]:
+                out.append({"page": n, "ctl": r["ctl"],
+                            "home": r["home"], "away": r["away"]})
+    return out
