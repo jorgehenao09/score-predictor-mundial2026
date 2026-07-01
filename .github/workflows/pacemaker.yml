@@ -46,6 +46,10 @@ jobs:
               gh workflow run telegram.yml -R "$REPO" && \
                 echo "latido $i: telegram.yml disparado ($(date -u +%H:%M))" || \
                 echo "latido $i: fallo al disparar (sigo)"
+              # auto-envío a golpredictor (idempotente: solo vacíos + dedupe)
+              gh workflow run golpredictor-submit.yml -R "$REPO" && \
+                echo "latido $i: golpredictor-submit.yml disparado" || \
+                echo "latido $i: fallo auto-envío (sigo)"
             else
               echo "latido $i: fuera de horario ($(date -u +%H:%M) UTC)"
             fi
