@@ -4,18 +4,13 @@ on:
   schedule:
     - cron: "5 */3 * * *"   # cada 3h regenera y publica
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write          # para pushear a la rama gh-pages
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: panel-pages
+  cancel-in-progress: false
 jobs:
   publicar:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -30,9 +25,10 @@ jobs:
         run: python -m predictor panel 8 --no-abrir
       - name: Preparar sitio
         run: mkdir -p _site && cp data/panel.html _site/index.html
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      # Publicar por rama gh-pages (git push simple, sin la API flaky de Pages)
+      - name: Publicar en gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: _site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          force_orphan: true    # gh-pages con un solo commit (sin bloat de historia)
