@@ -1,0 +1,214 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Score Predictor · Mundial 2026</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&amp;family=Fira+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+:root{
+  --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9; --border:#E2E8F0;
+  --text:#0F172A; --text-muted:#475569; --text-faint:#94A3B8;
+  --model:#2563EB; --market:#B45309; --final:#15803D; --value:#CA8A04;
+  --hit:#16A34A; --miss:#DC2626; --draw:#64748B;
+  --conf-alta:#16A34A; --conf-media:#D97706; --conf-baja:#DC2626;
+  --model-fill:#3B82F6; --market-fill:#F59E0B;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  --mono:'Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Fira Sans',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+  line-height:1.5;font-size:15px}
+.wrap{max-width:1100px;margin:0 auto;padding:var(--sp-5)}
+h1{font-size:22px;margin:0 0 var(--sp-1)}
+.sub{color:var(--text-muted);font-size:13px;margin-bottom:var(--sp-5)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* tab-bar */
+.tabs{display:flex;gap:var(--sp-1);background:var(--surface-2);
+  padding:var(--sp-1);border-radius:var(--r-md);width:fit-content;
+  margin-bottom:var(--sp-5)}
+.tab{border:0;background:transparent;color:var(--text-muted);cursor:pointer;
+  font-family:var(--sans);font-size:14px;font-weight:600;
+  padding:var(--sp-2) var(--sp-4);border-radius:var(--r-sm);
+  transition:background .2s,color .2s}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--text);
+  box-shadow:0 1px 2px rgba(15,23,42,.08)}
+.tab:focus-visible{outline:2px solid var(--model);outline-offset:2px}
+.panel[hidden]{display:none}
+
+/* match-card */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+  gap:var(--sp-4)}
+.card{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:var(--sp-4);
+  box-shadow:0 1px 3px rgba(15,23,42,.06)}
+.card .head{font-weight:600;margin-bottom:var(--sp-1)}
+.card .meta{color:var(--text-muted);font-size:12px}
+.pick{font-family:var(--mono);font-weight:600}
+.pick.gp{color:var(--final)} .pick.rem{color:var(--value)}
+
+/* bar-1x2 */
+.bars{margin:var(--sp-3) 0;display:flex;flex-direction:column;gap:var(--sp-1)}
+.bars .row{display:grid;grid-template-columns:64px 1fr 44px;align-items:center;
+  gap:var(--sp-2);font-size:12px}
+.track{height:8px;background:var(--surface-2);border-radius:99px;overflow:hidden}
+.fill{height:100%;border-radius:99px}
+.fill.model{background:var(--model-fill)} .fill.market{background:var(--market-fill)}
+.fill.final{background:var(--final)}
+
+/* badge */
+.badge{display:inline-block;font-size:11px;font-weight:600;
+  padding:2px var(--sp-2);border-radius:99px;border:1px solid currentColor}
+.badge.alta{color:var(--conf-alta)} .badge.media{color:var(--conf-media)}
+.badge.baja{color:var(--conf-baja)}
+.badge.hit{color:var(--hit)} .badge.miss{color:var(--miss)}
+
+/* kpi-tile */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:var(--sp-4);margin-bottom:var(--sp-5)}
+.kpi{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:var(--sp-4)}
+.kpi .v{font-family:var(--mono);font-size:32px;font-weight:700;line-height:1}
+.kpi .l{color:var(--text-muted);font-size:12px;margin-top:var(--sp-1)}
+
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden}
+th,td{padding:var(--sp-2) var(--sp-3);text-align:left;
+  border-bottom:1px solid var(--border)}
+th{color:var(--text-muted);font-weight:600;font-size:12px;
+  text-transform:uppercase;letter-spacing:.03em}
+tbody tr:hover{background:var(--surface-2)}
+tbody tr:last-child td{border-bottom:0}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.explain{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);padding:var(--sp-5);margin-bottom:var(--sp-5);
+  color:var(--text-muted)}
+.explain b{color:var(--text)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* === v2: card clicable, barra apilada, chips, modal, heatmap === */
+.card{cursor:pointer;transition:transform .2s,box-shadow .2s}
+.card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(15,23,42,.10)}
+.card:focus-visible{outline:2px solid var(--model);outline-offset:2px}
+.card .teams{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2)}
+
+.stack{display:flex;height:14px;border-radius:99px;overflow:hidden;margin:var(--sp-2) 0 4px}
+.stack > span{display:block}
+.stack .s-home{background:var(--model-fill)}
+.stack .s-draw{background:var(--draw)}
+.stack .s-away{background:var(--market-fill)}
+.stack-lbl{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)}
+
+.chips{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin-top:var(--sp-2)}
+.chip{font-family:var(--mono);font-size:12px;font-weight:600;padding:2px 8px;
+  border-radius:99px;background:var(--surface-2);color:var(--text)}
+.chip.gp{background:rgba(21,128,61,.12);color:var(--final)}
+.chip.rem{background:rgba(202,138,4,.14);color:var(--value)}
+.chip.val{background:rgba(37,99,235,.12);color:var(--model)}
+
+/* modal */
+.backdrop{position:fixed;inset:0;background:rgba(15,23,42,.55);
+  display:flex;align-items:flex-start;justify-content:center;padding:var(--sp-5);
+  overflow:auto;z-index:50}
+.backdrop[hidden]{display:none}
+.modal{background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-lg);max-width:720px;width:100%;padding:var(--sp-5);
+  box-shadow:0 20px 50px rgba(15,23,42,.25)}
+.modal h2{font-size:18px;margin:0 0 var(--sp-4)}
+.modal .x{float:right;border:0;background:var(--surface-2);cursor:pointer;
+  width:32px;height:32px;border-radius:8px;font-size:16px;color:var(--text-muted)}
+.modal .x:hover{color:var(--text)}
+.modal h3{font-size:12px;text-transform:uppercase;letter-spacing:.03em;
+  color:var(--text-muted);margin:var(--sp-5) 0 var(--sp-2)}
+
+/* heatmap matriz de goles */
+.heat{display:grid;grid-template-columns:auto repeat(6,1fr);gap:3px;font-size:11px;
+  font-family:var(--mono)}
+.heat .hd{color:var(--text-faint);text-align:center;align-self:center}
+.heat .cell{aspect-ratio:1;border-radius:4px;border:2px solid transparent;
+  display:flex;align-items:center;justify-content:center;color:var(--text)}
+.heat .cell.gp{border-color:var(--final)}
+.heat .cell.modal{border-color:var(--model)}
+
+/* barras de peso de factores (divergentes) */
+.fbar{display:grid;grid-template-columns:160px 1fr 56px;align-items:center;
+  gap:var(--sp-2);font-size:12px;margin:3px 0}
+.fbar .track2{height:10px;background:var(--surface-2);border-radius:4px;position:relative}
+.fbar .pos,.fbar .neg{position:absolute;top:0;height:100%;border-radius:4px}
+.fbar .pos{left:50%;background:var(--model)}
+.fbar .neg{right:50%;background:var(--miss)}
+.fbar .v{font-family:var(--mono);text-align:right}
+
+/* === Aciertos/Modelo v2 === */
+.kpi.k-model .v{color:var(--model)}
+.kpi.k-final .v{color:var(--final)}
+.kpi.k-value .v{color:var(--value)}
+.kpi.k-miss .v{color:var(--miss)}
+.arrow{color:var(--text-faint)}
+.layers{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin:var(--sp-2) 0 var(--sp-3)}
+.compare td.base,.compare th.base{background:var(--surface-2)}
+.compare .desc{display:block;font-size:11px;color:var(--text-faint);font-weight:400}
+</style></head><body><div class="wrap">
+<h1>⚽ Score Predictor · Mundial 2026</h1>
+<div class="sub">Generado 2026-07-21T22:05:46Z · 0 partidos próximos · datos: resultados 2026-07-21T22:05:45Z · cuotas sin datos · modelo fit #1 (2026-07-21T22:05:46Z)</div>
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" aria-selected="true" data-target="proximos">Próximos</button>
+  <button class="tab" role="tab" aria-selected="false" data-target="aciertos">Aciertos</button>
+  <button class="tab" role="tab" aria-selected="false" data-target="modelo">Modelo</button>
+</div>
+<section class="panel" id="proximos"><p class="meta">Sin partidos próximos.</p></section>
+<section class="panel" id="aciertos" hidden>
+  <div class="kpis"><div class="kpi k-model"><div class="v num">68%</div><div class="l">1X2 acertado</div></div><div class="kpi k-final"><div class="v num">12%</div><div class="l">Marcador exacto</div></div><div class="kpi k-value"><div class="v num">677</div><div class="l">Puntos golpredictor</div></div><div class="kpi"><div class="v num">0.156</div><div class="l">RPS (calidad, menor mejor)</div></div><div class="kpi"><div class="v num">—</div><div class="l">ROI ilustrativo*</div></div></div>
+  <p class="meta">El modelo es fuerte prediciendo <b>quién gana</b>; el
+    <b>marcador exacto</b> es intrínsecamente difícil. *ROI ilustrativo: apostar
+    al ganador previsto (1X2) a cuota de cierre; no es consejo de apuesta.</p>
+  <table><thead><tr><th>Fecha</th><th>Partido</th><th>Predicho → Real</th>
+    <th>✓/✗</th><th>Pts</th></tr></thead><tbody><tr><td class="n">2026-07-19</td><td>Spain vs Argentina</td><td class="n">1-0 <span class="arrow">→</span> 1-0</td><td><span class="badge hit">✓</span></td><td class="n">20</td></tr><tr><td class="n">2026-07-18</td><td>France vs England</td><td class="n">2-1 <span class="arrow">→</span> 4-6</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-07-15</td><td>England vs Argentina</td><td class="n">0-0 <span class="arrow">→</span> 1-2</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-07-14</td><td>France vs Spain</td><td class="n">1-0 <span class="arrow">→</span> 0-2</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-07-11</td><td>Argentina vs Switzerland</td><td class="n">1-0 <span class="arrow">→</span> 3-1</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-07-11</td><td>Norway vs England</td><td class="n">1-2 <span class="arrow">→</span> 1-2</td><td><span class="badge hit">✓</span></td><td class="n">20</td></tr><tr><td class="n">2026-07-10</td><td>Spain vs Belgium</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-07-09</td><td>France vs Morocco</td><td class="n">1-0 <span class="arrow">→</span> 2-0</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-07-06</td><td>United States vs Belgium</td><td class="n">1-0 <span class="arrow">→</span> 1-4</td><td><span class="badge miss">✗</span></td><td class="n">4</td></tr><tr><td class="n">2026-07-06</td><td>Portugal vs Spain</td><td class="n">0-1 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">20</td></tr><tr><td class="n">2026-07-05</td><td>Mexico vs England</td><td class="n">0-1 <span class="arrow">→</span> 2-3</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-07-05</td><td>Brazil vs Norway</td><td class="n">1-0 <span class="arrow">→</span> 1-2</td><td><span class="badge miss">✗</span></td><td class="n">4</td></tr><tr><td class="n">2026-07-04</td><td>Paraguay vs France</td><td class="n">0-2 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-07-04</td><td>Canada vs Morocco</td><td class="n">0-1 <span class="arrow">→</span> 0-3</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-07-03</td><td>Colombia vs Ghana</td><td class="n">1-0 <span class="arrow">→</span> 1-0</td><td><span class="badge hit">✓</span></td><td class="n">20</td></tr><tr><td class="n">2026-07-03</td><td>Australia vs Egypt</td><td class="n">0-1 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">4</td></tr><tr><td class="n">2026-07-03</td><td>Argentina vs Cape Verde</td><td class="n">2-0 <span class="arrow">→</span> 3-2</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-07-02</td><td>Switzerland vs Algeria</td><td class="n">1-0 <span class="arrow">→</span> 2-0</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-07-02</td><td>Spain vs Austria</td><td class="n">2-0 <span class="arrow">→</span> 3-0</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-07-02</td><td>Portugal vs Croatia</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-07-01</td><td>United States vs Bosnia and Herzegovina</td><td class="n">3-1 <span class="arrow">→</span> 2-0</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-07-01</td><td>England vs DR Congo</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-07-01</td><td>Belgium vs Senegal</td><td class="n">1-0 <span class="arrow">→</span> 3-2</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-06-30</td><td>Mexico vs Ecuador</td><td class="n">1-0 <span class="arrow">→</span> 2-0</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-06-30</td><td>Ivory Coast vs Norway</td><td class="n">0-1 <span class="arrow">→</span> 1-2</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-06-30</td><td>France vs Sweden</td><td class="n">2-0 <span class="arrow">→</span> 3-0</td><td><span class="badge hit">✓</span></td><td class="n">14</td></tr><tr><td class="n">2026-06-29</td><td>Netherlands vs Morocco</td><td class="n">1-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">4</td></tr><tr><td class="n">2026-06-29</td><td>Germany vs Paraguay</td><td class="n">2-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-29</td><td>Brazil vs Japan</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">12</td></tr><tr><td class="n">2026-06-28</td><td>South Africa vs Canada</td><td class="n">0-1 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">20</td></tr><tr><td class="n">2026-06-27</td><td>Jordan vs Argentina</td><td class="n">0-2 <span class="arrow">→</span> 1-3</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-27</td><td>Algeria vs Austria</td><td class="n">0-0 <span class="arrow">→</span> 3-3</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-27</td><td>Panama vs England</td><td class="n">0-2 <span class="arrow">→</span> 0-2</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-27</td><td>DR Congo vs Uzbekistan</td><td class="n">1-0 <span class="arrow">→</span> 3-1</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-27</td><td>Croatia vs Ghana</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-27</td><td>Colombia vs Portugal</td><td class="n">0-1 <span class="arrow">→</span> 0-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-26</td><td>Uruguay vs Spain</td><td class="n">0-1 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-26</td><td>New Zealand vs Belgium</td><td class="n">0-2 <span class="arrow">→</span> 1-5</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-26</td><td>Egypt vs Iran</td><td class="n">0-0 <span class="arrow">→</span> 1-1</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-26</td><td>Cape Verde vs Saudi Arabia</td><td class="n">0-1 <span class="arrow">→</span> 0-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-26</td><td>Senegal vs Iraq</td><td class="n">1-0 <span class="arrow">→</span> 5-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-26</td><td>Norway vs France</td><td class="n">0-2 <span class="arrow">→</span> 1-4</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-25</td><td>Turkey vs United States</td><td class="n">1-2 <span class="arrow">→</span> 3-2</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-25</td><td>Paraguay vs Australia</td><td class="n">0-0 <span class="arrow">→</span> 0-0</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-25</td><td>Tunisia vs Netherlands</td><td class="n">0-2 <span class="arrow">→</span> 1-3</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-25</td><td>Japan vs Sweden</td><td class="n">1-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-25</td><td>Ecuador vs Germany</td><td class="n">1-2 <span class="arrow">→</span> 2-1</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-25</td><td>Curaçao vs Ivory Coast</td><td class="n">0-2 <span class="arrow">→</span> 0-2</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-24</td><td>South Africa vs South Korea</td><td class="n">0-1 <span class="arrow">→</span> 1-0</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-24</td><td>Czech Republic vs Mexico</td><td class="n">0-1 <span class="arrow">→</span> 0-3</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-24</td><td>Switzerland vs Canada</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-24</td><td>Scotland vs Brazil</td><td class="n">0-1 <span class="arrow">→</span> 0-3</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-24</td><td>Morocco vs Haiti</td><td class="n">2-0 <span class="arrow">→</span> 4-2</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-24</td><td>Bosnia and Herzegovina vs Qatar</td><td class="n">0-1 <span class="arrow">→</span> 3-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-23</td><td>Colombia vs DR Congo</td><td class="n">1-0 <span class="arrow">→</span> 1-0</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-23</td><td>Portugal vs Uzbekistan</td><td class="n">2-0 <span class="arrow">→</span> 5-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-23</td><td>Panama vs Croatia</td><td class="n">0-1 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-23</td><td>England vs Ghana</td><td class="n">2-0 <span class="arrow">→</span> 0-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-22</td><td>Norway vs Senegal</td><td class="n">1-0 <span class="arrow">→</span> 3-2</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-22</td><td>Jordan vs Algeria</td><td class="n">0-1 <span class="arrow">→</span> 1-2</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-22</td><td>France vs Iraq</td><td class="n">2-0 <span class="arrow">→</span> 3-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-22</td><td>Argentina vs Austria</td><td class="n">1-0 <span class="arrow">→</span> 2-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-21</td><td>New Zealand vs Egypt</td><td class="n">0-1 <span class="arrow">→</span> 1-3</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-21</td><td>Uruguay vs Cape Verde</td><td class="n">1-0 <span class="arrow">→</span> 2-2</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-21</td><td>Spain vs Saudi Arabia</td><td class="n">2-0 <span class="arrow">→</span> 4-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-21</td><td>Belgium vs Iran</td><td class="n">1-0 <span class="arrow">→</span> 0-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-20</td><td>Tunisia vs Japan</td><td class="n">0-1 <span class="arrow">→</span> 0-4</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-20</td><td>Ecuador vs Curaçao</td><td class="n">1-0 <span class="arrow">→</span> 0-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-20</td><td>Netherlands vs Sweden</td><td class="n">2-1 <span class="arrow">→</span> 5-1</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-20</td><td>Germany vs Ivory Coast</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-19</td><td>Turkey vs Paraguay</td><td class="n">1-0 <span class="arrow">→</span> 0-1</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-19</td><td>Brazil vs Haiti</td><td class="n">2-0 <span class="arrow">→</span> 3-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-19</td><td>United States vs Australia</td><td class="n">1-0 <span class="arrow">→</span> 2-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-19</td><td>Scotland vs Morocco</td><td class="n">0-1 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-18</td><td>Mexico vs South Korea</td><td class="n">1-0 <span class="arrow">→</span> 1-0</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-18</td><td>Switzerland vs Bosnia and Herzegovina</td><td class="n">1-0 <span class="arrow">→</span> 4-1</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-18</td><td>Czech Republic vs South Africa</td><td class="n">1-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-18</td><td>Canada vs Qatar</td><td class="n">2-0 <span class="arrow">→</span> 6-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-17</td><td>Uzbekistan vs Colombia</td><td class="n">0-1 <span class="arrow">→</span> 1-3</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-17</td><td>Portugal vs DR Congo</td><td class="n">1-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-17</td><td>Ghana vs Panama</td><td class="n">1-0 <span class="arrow">→</span> 1-0</td><td><span class="badge hit">✓</span></td><td class="n">10</td></tr><tr><td class="n">2026-06-17</td><td>England vs Croatia</td><td class="n">1-0 <span class="arrow">→</span> 4-2</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-16</td><td>Austria vs Jordan</td><td class="n">1-0 <span class="arrow">→</span> 3-1</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-16</td><td>Argentina vs Algeria</td><td class="n">1-0 <span class="arrow">→</span> 3-0</td><td><span class="badge hit">✓</span></td><td class="n">7</td></tr><tr><td class="n">2026-06-16</td><td>Iraq vs Norway</td><td class="n">0-1 <span class="arrow">→</span> 1-4</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-16</td><td>France vs Senegal</td><td class="n">1-0 <span class="arrow">→</span> 3-1</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-15</td><td>Iran vs New Zealand</td><td class="n">1-0 <span class="arrow">→</span> 2-2</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-15</td><td>Spain vs Cape Verde</td><td class="n">2-0 <span class="arrow">→</span> 0-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-15</td><td>Saudi Arabia vs Uruguay</td><td class="n">0-1 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-15</td><td>Belgium vs Egypt</td><td class="n">1-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-14</td><td>Sweden vs Tunisia</td><td class="n">1-1 <span class="arrow">→</span> 5-1</td><td><span class="badge hit">✓</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-14</td><td>Netherlands vs Japan</td><td class="n">1-1 <span class="arrow">→</span> 2-2</td><td><span class="badge miss">✗</span></td><td class="n">6</td></tr><tr><td class="n">2026-06-14</td><td>Ivory Coast vs Ecuador</td><td class="n">0-0 <span class="arrow">→</span> 1-0</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-14</td><td>Germany vs Curaçao</td><td class="n">2-0 <span class="arrow">→</span> 7-1</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-13</td><td>Haiti vs Scotland</td><td class="n">1-1 <span class="arrow">→</span> 0-1</td><td><span class="badge hit">✓</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-13</td><td>Australia vs Turkey</td><td class="n">1-1 <span class="arrow">→</span> 2-0</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-13</td><td>Qatar vs Switzerland</td><td class="n">0-2 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-13</td><td>Brazil vs Morocco</td><td class="n">1-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">2</td></tr><tr><td class="n">2026-06-12</td><td>United States vs Paraguay</td><td class="n">1-0 <span class="arrow">→</span> 4-1</td><td><span class="badge hit">✓</span></td><td class="n">5</td></tr><tr><td class="n">2026-06-12</td><td>Canada vs Bosnia and Herzegovina</td><td class="n">2-0 <span class="arrow">→</span> 1-1</td><td><span class="badge miss">✗</span></td><td class="n">0</td></tr><tr><td class="n">2026-06-11</td><td>South Korea vs Czech Republic</td><td class="n">1-0 <span class="arrow">→</span> 2-1</td><td><span class="badge hit">✓</span></td><td class="n">6</td></tr></tbody></table>
+</section>
+<section class="panel" id="modelo" hidden>
+  <div class="explain">
+    <b>El modelo base (universal, no cambia entre competiciones).</b>
+    <div class="layers"><span class="chip">Dixon-Coles</span><span class="chip">prior Elo</span><span class="chip">Shin de-vig</span><span class="chip">óptimo-EV</span><span class="chip">mezcla auto</span></div>
+    Dixon-Coles ponderado por tiempo (ataque/defensa por selección, corrección
+    rho de marcadores bajos) · prior Elo para selecciones con poca muestra ·
+    de-vigging del mercado por método de Shin · marcador óptimo-EV para
+    golpredictor · y una <b>mezcla modelo↔mercado autoaprendida</b> que minimiza
+    el RPS sobre lo ya jugado.
+  </div>
+  <table class="compare"><thead><tr><th>Parámetro</th>
+    <th class="base">BASE</th><th>Mundial 2026</th></tr></thead>
+    <tbody><tr><td>xi (decaimiento temporal)<span class="desc">cuánto pesan los partidos viejos</span></td><td class="n base">0.0005</td><td class="n">0.0005</td></tr><tr><td>rho (marcadores bajos)<span class="desc">corrección Dixon-Coles de 0-0 / 1-1</span></td><td class="n base">—</td><td class="n">-0.036</td></tr><tr><td>ventaja local<span class="desc">bono al anfitrión que juega en su país</span></td><td class="n base">—</td><td class="n">+30% (por sede)</td></tr><tr><td>mezcla modelo↔mercado<span class="desc">peso del mercado, autoaprendido</span></td><td class="n base">0.50</td><td class="n">0.91 (aprendido)</td></tr><tr><td>goal uplift<span class="desc">corrección de volumen de goles</span></td><td class="n base">1.10</td><td class="n">1.30</td></tr><tr><td>¿auto-ajusta?<span class="desc">qué se recalibra solo</span></td><td class="n base">—</td><td class="n">mezcla sí · resto vigilado</td></tr></tbody></table>
+  <p class="meta" style="margin-top:12px">Cada competición que se añada al
+    registro aparece como una columna nueva. La fila BASE son los defaults
+    universales del modelo.</p>
+</section>
+</div>
+<script>
+document.querySelectorAll('.tab').forEach(function(t){
+  t.addEventListener('click',function(){
+    document.querySelectorAll('.tab').forEach(function(x){
+      x.setAttribute('aria-selected', x===t ? 'true':'false');});
+    document.querySelectorAll('.panel').forEach(function(p){
+      p.hidden = p.id !== t.dataset.target;});
+  });
+});
+</script>
+
+<script>
+(function(){
+  function open(id, trigger){var m=document.getElementById(id);if(!m)return;m._trigger=trigger;m.hidden=false;var f=m.querySelector('button, [tabindex], a, input');if(f)f.focus();}
+  function closeAll(){document.querySelectorAll('.backdrop').forEach(function(b){if(!b.hidden&&b._trigger)b._trigger.focus();b.hidden=true;});}
+  document.querySelectorAll('.card[data-detail]').forEach(function(c){
+    c.addEventListener('click',function(){open(c.dataset.detail,c);});
+    c.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();open(c.dataset.detail,c);}});
+  });
+  document.querySelectorAll('.backdrop').forEach(function(b){
+    b.addEventListener('click',function(e){if(e.target===b||e.target.dataset.close)closeAll();});
+  });
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAll();});
+})();
+</script>
+</body></html>
